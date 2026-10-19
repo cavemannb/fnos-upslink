@@ -1,0 +1,66 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    name: 测试
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: 环境信息
+        run: python -V && uname -a
+
+      - name: 冒烟测试（内置假 NUT 服务端，10 项）
+        run: python tools/smoke_test.py
+
+      - name: 电池健康逻辑（8 组）
+        run: python tools/test_battery.py
+
+  build:
+    name: 打包
+    runs-on: ubuntu-latest
+    needs: test
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: 构建 fpk
+        run: |
+          bash build-fpk.sh
+          ls -lh dist/
+
+      - name: 校验包内结构
+        run: |
+          set -e
+          FPK=$(ls dist/*.fpk | head -1)
+          echo "产物：$FPK"
+          tar -tzf "$FPK"
+          # 条目名不能带 ./ 前缀，checksum 必须是 32 位小写十六进制
+          if tar -tzf "$FPK" | grep -q '^\./'; then
+            echo "错误：归档条目带 ./ 前缀，fnOS 会拒绝安装"; exit 1
+          fi
+          tar -xzOf "$FPK" manifest | grep -E '^(version|checksum)[[:space:]]*='
+          tar -xzOf "$FPK" manifest | grep -qE '^checksum[[:space:]]*=[[:space:]]*[0-9a-f]{32}$'
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: upslink-fpk
+          path: dist/*.fpk
+          if-no-files-found: error
+          retention-days: 30

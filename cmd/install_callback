@@ -1,0 +1,66 @@
+#!/bin/bash
+# 安装后回调（以 root 运行，见 config/privilege 的 run-as=root）
+#
+# 这一版刻意不做 set -e、不做任何可能失败的强校验：
+# 安装期脚本一旦返回非 0，应用中心只会抛一个没有文本的 10238，极难定位。
+# 1.0.1 及更早版本在这里以普通应用用户身份写 /etc/sudoers.d，
+# 权限被拒后 set -e 直接退出 —— 这就是安装失败的真正原因。
+
+SELF_DIR="$(cd "$(dirname "$0")" && pwd)"
+DATA_DIR="${TRIM_PKGVAR:-/opt/upslink/var}"
+RUN_USER="${TRIM_USERNAME:-upslink}"
+SUDOERS="/etc/sudoers.d/upslink"
+
+umask 022
+
+# 1) 运行时数据目录
+mkdir -p "$DATA_DIR" 2>/dev/null
+
+# 2) 默认配置（只在不存在时创建，升级不覆盖用户设置）
+if [ ! -f "${DATA_DIR}/config.json" ]; then
+	cat >"${DATA_DIR}/config.json" <<'EOF' 2>/dev/null
+{
+  "host": "",
+  "port": 3493,
+  "ups": "ups",
+  "username": "",
+  "password": "",
+  "interval": 5,
+  "onbatt_seconds": 300,
+  "auto_shutdown": false,
+  "shutdown_on_lb": true,
+  "shutdown_on_fsd": true
+}
+EOF
+fi
+
+# 3) 数据目录归应用用户（服务进程降权后要能读写）
+if id "$RUN_USER" >/dev/null 2>&1; then
+	chown -R "${RUN_USER}:${RUN_USER}" "$DATA_DIR" 2>/dev/null
+fi
+
+# 4) 关机权限：交给 repair_shutdown.sh（与「界面一键修复」共用同一份逻辑）
+#    先写下 root 拥有的路径参数，脚本不接受命令行传参，避免被当成任意 root 操作。
+printf 'DATA_DIR=%q\nRUN_USER=%q\n' "$DATA_DIR" "$RUN_USER" >"${SELF_DIR}/repair.env" 2>/dev/null
+chmod 0644 "${SELF_DIR}/repair.env" 2>/dev/null
+
+if [ "$(id -u)" = "0" ] && [ -f "${SELF_DIR}/repair_shutdown.sh" ]; then
+	sh "${SELF_DIR}/repair_shutdown.sh" >/dev/null 2>&1
+fi
+
+# 5) 兜底：脚本不可用（极旧包/文件缺失）时，内联写一次
+if [ ! -f "${DATA_DIR}/shutdown_capable" ] && [ "$(id -u)" = "0" ] \
+	&& id "$RUN_USER" >/dev/null 2>&1 && command -v sudo >/dev/null 2>&1; then
+	printf '%s ALL=(root) NOPASSWD: /sbin/shutdown, /usr/sbin/shutdown, /sbin/poweroff, /usr/sbin/poweroff\n' \
+		"$RUN_USER" >"$SUDOERS" 2>/dev/null
+	if [ -f "$SUDOERS" ]; then
+		chmod 0440 "$SUDOERS" 2>/dev/null
+		if command -v visudo >/dev/null 2>&1; then
+			visudo -cf "$SUDOERS" >/dev/null 2>&1 || rm -f "$SUDOERS"
+		fi
+		[ -f "$SUDOERS" ] && echo 1 >"${DATA_DIR}/shutdown_capable"
+	fi
+	chown "${RUN_USER}:${RUN_USER}" "${DATA_DIR}/shutdown_capable" 2>/dev/null
+fi
+
+exit 0

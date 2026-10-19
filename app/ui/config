@@ -1,0 +1,13 @@
+{
+    ".url": {
+        "upslink.main": {
+            "title": "UPS 联动",
+            "icon": "images/icon-{0}.png",
+            "type": "url",
+            "protocol": "http",
+            "port": "8099",
+            "url": "/",
+            "allUsers": false
+        }
+    }
+}

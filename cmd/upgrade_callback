@@ -1,0 +1,6 @@
+#!/bin/bash
+# 升级后：重新跑一遍安装回调（补数据目录、修权限、重写关机授权），然后启动。
+SELF_DIR="$(cd "$(dirname "$0")" && pwd)"
+"${SELF_DIR}/install_callback" >/dev/null 2>&1
+"${SELF_DIR}/main" start >/dev/null 2>&1
+exit 0

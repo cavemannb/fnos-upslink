@@ -1,0 +1,6 @@
+#!/bin/bash
+# 应用设置页变更后：重启服务让配置生效（只在服务本来就在运行时）。
+SELF_DIR="$(cd "$(dirname "$0")" && pwd)"
+"${SELF_DIR}/main" stop >/dev/null 2>&1
+"${SELF_DIR}/main" start >/dev/null 2>&1
+exit 0

@@ -1,0 +1,5 @@
+#!/bin/bash
+# 升级前：停掉旧进程。
+SELF_DIR="$(cd "$(dirname "$0")" && pwd)"
+"${SELF_DIR}/main" stop >/dev/null 2>&1
+exit 0

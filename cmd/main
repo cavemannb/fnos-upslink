@@ -1,0 +1,131 @@
+#!/bin/bash
+# UPSLink 生命周期脚本：start / stop / status
+# 生命周期脚本以 root 运行（config/privilege: run-as=root），
+# 但常驻的 Web 服务会降权到应用用户 upslink 运行（runuser），
+# 只有「关机」这一步借用 install_callback 写入的最小 sudo 规则。
+# 约定：start/stop 成功 exit 0，失败 exit 1；status 运行中 exit 0，未运行 exit 3
+
+SELF_DIR="$(cd "$(dirname "$0")" && pwd)"
+APP_DIR="${TRIM_APPDEST:-${SELF_DIR}/../app}"
+DATA_DIR="${TRIM_PKGVAR:-${SELF_DIR}/../var}"
+RUN_USER="${TRIM_USERNAME:-upslink}"
+PID_FILE="${DATA_DIR}/upslink.pid"
+LOG_FILE="${DATA_DIR}/app.log"
+PORT="${TRIM_SERVICE_PORT:-8099}"
+LOG_MAX=1048576
+
+fail() {
+	if [ -n "${TRIM_TEMP_LOGFILE:-}" ]; then
+		echo "$1" >"${TRIM_TEMP_LOGFILE}"
+	else
+		echo "$1" >&2
+	fi
+	exit 1
+}
+
+running_pid() {
+	[ -f "$PID_FILE" ] || return 1
+	pid=$(tr -cd '0-9' <"$PID_FILE" 2>/dev/null)
+	[ -n "$pid" ] || return 1
+	kill -0 "$pid" 2>/dev/null || return 1
+	echo "$pid"
+}
+
+# 端口是否已被占用（bash 内建 /dev/tcp 探测，不依赖额外工具）
+port_busy() {
+	(exec 3<>"/dev/tcp/127.0.0.1/${PORT}") 2>/dev/null && { exec 3>&- 3<&-; return 0; }
+	return 1
+}
+
+# 兜底清理：runuser 包裹启动时，杀掉包裹进程不会带走 python 子进程，
+# 升级/停止后可能留下仍占着端口的孤儿实例，按命令行特征精确清理（只匹配本应用路径）
+kill_orphans() {
+	pkill -f "${APP_DIR}/server.py" 2>/dev/null
+	return 0
+}
+
+# 等端口释放，最多 10 秒
+wait_port_free() {
+	local _i
+	for _i in $(seq 1 20); do
+		port_busy || return 0
+		sleep 0.5
+	done
+	return 1
+}
+
+# 以应用用户身份执行（root 下用 runuser 降权）
+as_app() {
+	if [ "$(id -u)" = "0" ] && id "$RUN_USER" >/dev/null 2>&1; then
+		if command -v runuser >/dev/null 2>&1; then
+			runuser -u "$RUN_USER" -- "$@"
+			return $?
+		fi
+		if command -v su >/dev/null 2>&1; then
+			su -s /bin/sh "$RUN_USER" -c "$(printf '%q ' "$@")"
+			return $?
+		fi
+	fi
+	"$@"
+}
+
+case "$1" in
+start)
+	PY=$(command -v python3 2>/dev/null)
+	[ -n "$PY" ] || fail "系统缺少 python3，无法启动 UPSLink。"
+	mkdir -p "$DATA_DIR" 2>/dev/null
+	id "$RUN_USER" >/dev/null 2>&1 && chown -R "${RUN_USER}:${RUN_USER}" "$DATA_DIR" 2>/dev/null
+	# 每次启动都以 root 重建一次关机权限：系统升级把 /etc/sudoers.d 清掉后，
+	# 在应用中心点一次「停止 → 启动」即可恢复，不必卸载重装。
+	if [ "$(id -u)" = "0" ] && [ -f "${SELF_DIR}/repair_shutdown.sh" ]; then
+		printf 'DATA_DIR=%q\nRUN_USER=%q\n' "$DATA_DIR" "$RUN_USER" >"${SELF_DIR}/repair.env" 2>/dev/null
+		sh "${SELF_DIR}/repair_shutdown.sh" >/dev/null 2>&1
+	fi
+	if pid=$(running_pid); then
+		exit 0
+	fi
+	[ -f "$APP_DIR/server.py" ] || fail "应用文件缺失：$APP_DIR/server.py"
+	# 清理升级/异常退出留下的孤儿实例，等端口真正释放后再启动，
+	# 否则应用中心会在启动前做端口检查并报「端口被占用」。
+	kill_orphans
+	wait_port_free || fail "端口 ${PORT} 被其他程序占用，UPSLink 无法启动。请排查占用 ${PORT} 端口的进程（或重启一次飞牛）后重试。"
+	# 日志超过 1MB 就轮转一次，避免长期运行把分区写满
+	if [ -f "$LOG_FILE" ] && [ "$(wc -c <"$LOG_FILE" 2>/dev/null || echo 0)" -gt "$LOG_MAX" ]; then
+		mv -f "$LOG_FILE" "${LOG_FILE}.1" 2>/dev/null
+	fi
+	as_app env HOME="$DATA_DIR" UPSLINK_DATA="$DATA_DIR" UPSLINK_PORT="$PORT" \
+		"$PY" "$APP_DIR/server.py" >>"$LOG_FILE" 2>&1 &
+	echo $! >"$PID_FILE"
+	chown "${RUN_USER}:${RUN_USER}" "$PID_FILE" "$LOG_FILE" 2>/dev/null
+	sleep 2
+	if pid=$(running_pid); then
+		exit 0
+	fi
+	rm -f "$PID_FILE"
+	fail "UPSLink 启动失败，最后几行日志：$(tail -n 20 "$LOG_FILE" 2>/dev/null)"
+	;;
+stop)
+	if pid=$(running_pid); then
+		kill "$pid" 2>/dev/null
+		for _ in 1 2 3 4 5 6 7 8 9 10; do
+			kill -0 "$pid" 2>/dev/null || break
+			sleep 0.5
+		done
+		kill -9 "$pid" 2>/dev/null
+	fi
+	rm -f "$PID_FILE"
+	# 杀掉包裹进程后 python 子进程可能成为孤儿继续占端口，这里兜底清理
+	kill_orphans
+	wait_port_free
+	exit 0
+	;;
+status)
+	if running_pid >/dev/null; then
+		exit 0
+	fi
+	exit 3
+	;;
+*)
+	exit 1
+	;;
+esac

@@ -1,0 +1,918 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>UPSLink · UPS 联动</title>
+<style>
+:root{
+  --bg:#f6f7f9; --panel:#ffffff; --line:#e5e7eb; --text:#1a1c1f; --muted:#6b7280;
+  --ok:#1f8a5f; --warn:#b26a00; --bad:#c22d2d; --accent:#2f6bff;
+  --charge:#2f6bff; --loadc:#b26a00;
+}
+@media (prefers-color-scheme: dark){
+  :root{ --bg:#16181c; --panel:#1e2126; --line:#2e3238; --text:#e8eaed; --muted:#9aa1ac;
+         --ok:#4cc38a; --warn:#e0a84c; --bad:#f07c7c; --accent:#6c9bff;
+         --charge:#6c9bff; --loadc:#e0a84c; }
+}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--text);
+  font:14px/1.6 -apple-system,BlinkMacSystemFont,"Segoe UI","PingFang SC","Microsoft YaHei",sans-serif}
+.wrap{max-width:960px;margin:0 auto;padding:26px 20px 44px}
+header{display:flex;align-items:flex-start;gap:12px;margin-bottom:14px}
+h1{font-size:16px;font-weight:600;margin:0;letter-spacing:-.2px}
+.ver{color:var(--muted);font-size:12px;margin-top:2px}
+.poll{margin-left:auto;text-align:right;font-size:12px;color:var(--muted);line-height:1.5}
+.poll b{font-weight:400;color:var(--text);font-variant-numeric:tabular-nums}
+
+.panel{background:var(--panel);border:1px solid var(--line);border-radius:12px}
+.banner{margin:0 0 12px;padding:11px 16px;border-radius:12px;border:1px solid var(--line);
+  background:var(--panel);display:none;font-size:13px}
+.banner.show{display:block;border-color:var(--warn)}
+.banner b{color:var(--warn)}
+.banner button{margin-left:8px}
+
+.band{display:flex;align-items:center;gap:18px;flex-wrap:wrap;padding:16px 20px;margin-bottom:12px}
+.band-l{display:flex;align-items:center;gap:11px;min-width:190px}
+.dot{width:9px;height:9px;border-radius:50%;background:var(--muted);flex:0 0 9px}
+.dot.on{background:var(--ok)} .dot.batt{background:var(--warn)}
+.dot.off{background:var(--bad)}
+.st{font-size:19px;font-weight:600;letter-spacing:-.3px;line-height:1.3}
+.st-sub{font-size:12px;color:var(--muted);font-variant-numeric:tabular-nums}
+.band-r{margin-left:auto;display:flex;gap:26px;flex-wrap:wrap}
+.band-r .k{font-size:11px;color:var(--muted);margin-bottom:1px}
+.band-r .n{font-size:22px;font-weight:600;letter-spacing:-.5px;font-variant-numeric:tabular-nums;line-height:1.25}
+.band-r .n i{font-style:normal;font-size:12px;font-weight:400;color:var(--muted);margin-left:2px}
+.band-r .n.sm{font-size:15px;letter-spacing:0}
+
+.cards3{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:12px;margin-bottom:12px}
+.card{padding:13px 16px}
+.card .hd{font-size:11px;color:var(--muted);margin-bottom:5px}
+.card .big{font-size:24px;font-weight:600;letter-spacing:-.6px;line-height:1.2;margin-bottom:7px;
+  font-variant-numeric:tabular-nums}
+.card .big i{font-style:normal;font-size:12px;font-weight:400;color:var(--muted);margin-left:3px}
+.kv{display:flex;justify-content:space-between;gap:10px;font-size:12.5px;padding:1.5px 0}
+.kv b{font-weight:400;color:var(--muted);white-space:nowrap}
+.kv span{text-align:right;color:var(--text);font-variant-numeric:tabular-nums}
+.bhealth{margin-top:8px;padding-top:8px;border-top:1px dashed var(--line)}
+.bhealth .bh-hd{display:flex;align-items:center;gap:6px;font-size:12px;font-weight:600}
+.bhealth .bh-hd i{width:6px;height:6px;border-radius:50%;background:var(--ok);flex:0 0 auto}
+.bhealth.warn .bh-hd i{background:var(--warn)}
+.bhealth.due .bh-hd i{background:var(--bad)}
+.bhealth.unknown .bh-hd i{background:var(--muted)}
+.bhealth .bh-msg{font-size:12px;color:var(--muted);margin-top:3px;line-height:1.5}
+.bhealth .bh-nums{display:flex;gap:12px;margin-top:5px;font-size:12px;color:var(--muted);flex-wrap:wrap}
+.bhealth .bh-nums b{color:var(--text);font-weight:600;font-variant-numeric:tabular-nums}
+
+.tr-hd{display:flex;align-items:center;gap:12px;flex-wrap:wrap;padding:13px 16px 6px}
+.tr-hd .ttl{font-size:13px;font-weight:600}
+.legend{display:flex;gap:12px;font-size:12px;color:var(--muted);margin-left:2px}
+.legend i{display:inline-block;width:11px;height:2px;vertical-align:middle;margin-right:5px}
+.chips{margin-left:auto;display:flex;gap:6px}
+.chip{border:1px solid var(--line);background:transparent;color:var(--muted);border-radius:7px;
+  padding:2px 9px;font:inherit;font-size:12px;cursor:pointer;line-height:1.7}
+.chip:hover{border-color:var(--muted)}
+.chip.on{color:var(--text);border-color:var(--accent);background:var(--bg)}
+.chart{position:relative;padding:0 6px 8px}
+.chart svg{display:block;width:100%}
+.tip{position:absolute;top:2px;left:0;transform:translateX(-50%);display:none;white-space:nowrap;
+  background:var(--panel);border:1px solid var(--line);border-radius:8px;padding:5px 9px;
+  font-size:12px;line-height:1.55;pointer-events:none;z-index:4;font-variant-numeric:tabular-nums}
+.tip b{font-weight:600}
+.tip .m{color:var(--muted)}
+
+.stats4{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:12px;margin:12px 0}
+.stat{background:var(--panel);border:1px solid var(--line);border-radius:10px;padding:10px 13px}
+.stat .k{font-size:11px;color:var(--muted)}
+.stat .n{font-size:20px;font-weight:600;letter-spacing:-.4px;font-variant-numeric:tabular-nums}
+.stat .n small{font-size:11px;font-weight:400;color:var(--muted);margin-left:3px}
+
+details.sec{background:var(--panel);border:1px solid var(--line);border-radius:12px;margin-top:12px}
+details.sec summary{list-style:none;cursor:pointer;padding:12px 16px;display:flex;align-items:center;
+  gap:10px;font-size:13px;font-weight:600;user-select:none}
+details.sec summary::-webkit-details-marker{display:none}
+details.sec summary:hover{color:var(--accent)}
+.caret{width:0;height:0;border-left:5px solid var(--muted);border-top:4px solid transparent;
+  border-bottom:4px solid transparent;transition:transform .15s;flex:0 0 5px}
+details[open] .caret{transform:rotate(90deg)}
+.sum{margin-left:auto;font-weight:400;font-size:12px;color:var(--muted);text-align:right;
+  overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:60%}
+.body{padding:2px 16px 16px;border-top:1px solid var(--line);margin-top:0}
+.body>.first{margin-top:12px}
+h2{font-size:12px;font-weight:600;margin:14px 0 8px;color:var(--muted);letter-spacing:.02em}
+h2:first-child{margin-top:12px}
+
+.row{display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:12px;margin-bottom:12px}
+label{display:block;font-size:12px;color:var(--muted);margin-bottom:5px}
+input[type=text],input[type=password],input[type=number]{
+  width:100%;padding:8px 10px;border:1px solid var(--line);border-radius:8px;
+  background:var(--bg);color:var(--text);font:inherit;font-size:13px}
+input:focus{outline:none;border-color:var(--accent)}
+.check{display:flex;align-items:flex-start;gap:9px;margin:2px 0 10px;font-size:13px}
+.check input{margin-top:3px}
+.hint{color:var(--muted);font-size:12px;margin:0 0 12px}
+.actions{display:flex;gap:10px;flex-wrap:wrap;align-items:center;padding:4px 0 2px}
+button{padding:7px 15px;border-radius:8px;border:1px solid var(--line);background:var(--bg);
+  color:var(--text);font:inherit;font-size:13px;cursor:pointer}
+button:hover{border-color:var(--accent)}
+button.primary{background:var(--accent);border-color:var(--accent);color:#fff}
+button:disabled{opacity:.5;cursor:default}
+#msg{font-size:12px;min-height:18px;padding-top:8px}
+
+.chk{display:flex;gap:9px;padding:6px 0;border-bottom:1px dashed var(--line);font-size:12.5px}
+.chk:last-child{border-bottom:0}
+.chk .s{flex:0 0 14px;font-weight:700}
+.chk.ok .s{color:var(--ok)} .chk.warn .s{color:var(--warn)} .chk.err .s{color:var(--bad)}
+.chk .d{color:var(--muted)}
+
+.vars{max-height:300px;overflow:auto;font:12px/1.7 ui-monospace,SFMono-Regular,Consolas,monospace}
+.vars div{display:flex;gap:14px;padding:2px 0;border-bottom:1px dashed var(--line)}
+.vars b{font-weight:400;color:var(--muted);flex:0 0 46%;word-break:break-all}
+.vars span{text-align:right;flex:1;word-break:break-all}
+.mini{font-size:12px;color:var(--muted)}
+
+.ev-hd{display:flex;align-items:center;gap:6px;flex-wrap:wrap;padding:13px 16px 8px}
+.ev-hd .ttl{font-size:13px;font-weight:600;margin-right:6px}
+ul.events{list-style:none;margin:0;padding:0 16px 14px;max-height:300px;overflow:auto}
+ul.events li{display:flex;gap:10px;padding:5px 0;border-bottom:1px dashed var(--line);font-size:12.5px}
+ul.events li:last-child{border-bottom:0}
+ul.events time{color:var(--muted);flex:0 0 74px;font-variant-numeric:tabular-nums}
+.tag{flex:0 0 34px;color:var(--muted)}
+.tag.shutdown,.tag.error,.tag.offline{color:var(--bad)}
+.tag.onbatt{color:var(--warn)}
+.tag.online,.tag.test,.tag.repair{color:var(--ok)}
+footer{margin-top:16px;color:var(--muted);font-size:11.5px;line-height:1.7}
+
+@media (max-width:780px){
+  .cards3{grid-template-columns:1fr}
+  .stats4{grid-template-columns:repeat(2,minmax(0,1fr))}
+  .band-r{gap:18px;width:100%;margin-left:0}
+  .sum{max-width:48%}
+}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <div>
+      <h1>UPS 联动</h1>
+      <div class="ver" id="ver">读取中</div>
+    </div>
+    <div class="poll" id="poll"></div>
+  </header>
+
+  <div class="banner" id="banner"></div>
+
+  <div class="panel band">
+    <div class="band-l">
+      <span class="dot" id="dot"></span>
+      <div>
+        <div class="st" id="stText">—</div>
+        <div class="st-sub" id="stSub">等待首次轮询</div>
+      </div>
+    </div>
+    <div class="band-r">
+      <div><div class="k">电量</div><div class="n"><span id="mCharge">—</span><i>%</i></div></div>
+      <div><div class="k">续航</div><div class="n"><span id="mRuntime">—</span></div></div>
+      <div><div class="k">负载</div><div class="n"><span id="mLoad">—</span><i>%</i></div></div>
+      <div><div class="k">断电时</div><div class="n sm" id="mPolicy">—</div></div>
+    </div>
+  </div>
+
+  <div class="cards3">
+    <div class="panel card">
+      <div class="hd">电池</div>
+      <div class="big" id="cCharge">—</div>
+      <div id="cBatRows"></div>
+      <div id="cBatHealth" class="bhealth"></div>
+    </div>
+    <div class="panel card">
+      <div class="hd">负载</div>
+      <div class="big" id="cLoad">—</div>
+      <div id="cLoadRows"></div>
+    </div>
+    <div class="panel card">
+      <div class="hd">市电</div>
+      <div class="big" id="cVolt">—</div>
+      <div id="cMainsRows"></div>
+    </div>
+  </div>
+
+  <div class="panel">
+    <div class="tr-hd">
+      <span class="ttl">电量与负载</span>
+      <span class="legend">
+        <span><i style="background:var(--charge)"></i>电量</span>
+        <span><i style="background:var(--loadc)"></i>负载</span>
+      </span>
+      <div class="chips" id="rangeChips">
+        <button class="chip" data-range="1h">1 时</button>
+        <button class="chip" data-range="6h">6 时</button>
+        <button class="chip on" data-range="24h">24 时</button>
+        <button class="chip" data-range="7d">7 天</button>
+      </div>
+    </div>
+    <div class="chart" id="chartBox">
+      <svg id="chart" height="200"></svg>
+      <div class="tip" id="tip"></div>
+    </div>
+  </div>
+
+  <div class="stats4" id="stats"></div>
+
+  <details class="sec">
+    <summary><span class="caret"></span>设备与驱动<span class="sum" id="devSum">—</span></summary>
+    <div class="body"><div id="devBody" class="first"></div></div>
+  </details>
+
+  <details class="sec">
+    <summary><span class="caret"></span>全部 NUT 变量<span class="sum" id="varSum">—</span></summary>
+    <div class="body">
+      <div class="vars first" id="varList"></div>
+      <div class="actions">
+        <button id="btnCopy">复制全部变量</button>
+        <span class="mini" id="copyMsg"></span>
+      </div>
+    </div>
+  </details>
+
+  <details class="sec">
+    <summary><span class="caret"></span>关机策略与配置<span class="sum" id="cfgSum">—</span></summary>
+    <div class="body">
+      <h2>上游（NUT Server）</h2>
+      <div class="row">
+        <div><label>地址</label><input type="text" id="fHost" placeholder="192.168.1.20"></div>
+        <div><label>端口</label><input type="number" id="fPort" placeholder="3493"></div>
+        <div><label>UPS 名称</label><input type="text" id="fUps" placeholder="ups"></div>
+      </div>
+      <div class="row">
+        <div><label>用户名（可选）</label><input type="text" id="fUser" placeholder="monuser"></div>
+        <div><label>密码（可选）</label><input type="password" id="fPass" placeholder="留空则不修改"></div>
+        <div><label>轮询间隔（秒）</label><input type="number" id="fInterval" min="2" max="300"></div>
+      </div>
+      <h2>电池</h2>
+      <div class="row">
+        <div><label>投运日期</label><input type="date" id="fBatDate"></div>
+        <div><label>建议更换周期（月）</label><input type="number" id="fBatLife" min="6" max="120"></div>
+        <div><label>提前提醒（天）</label><input type="number" id="fBatWarn" min="7" max="180"></div>
+      </div>
+      <p class="hint">换完电池把这里改成当天日期。倒计时从投运日期起算；实测容量基线会在第一次有效断电（超过 8 分钟且电量确实下降）后自动记录，之后按衰减幅度提前报警——不必等到 UPS 自己叫。实测值按放电斜率外推，用来比较衰减趋势，不是精确续航。</p>
+      <h2>关机策略</h2>
+      <div class="row">
+        <div><label>断电后等待（秒）</label><input type="number" id="fWait" min="0" max="86400"></div>
+      </div>
+      <p class="hint">建议比上游 NAS 的关机延迟更短，让飞牛先关机。填 0 表示只靠下面两个兜底条件。</p>
+      <div class="check"><input type="checkbox" id="fLb"><span>收到低电量信号（LB）立即关机</span></div>
+      <div class="check"><input type="checkbox" id="fFsd"><span>响应上游强制关机指令（FSD）</span></div>
+      <div class="check"><input type="checkbox" id="fAuto"><span><b>启用自动关机</b>（关闭时本应用只监控，绝不关机）</span></div>
+      <div class="actions">
+        <button class="primary" id="btnSave">保存配置</button>
+        <button id="btnTest">测试连接</button>
+        <button id="btnDrill">安全演练</button>
+      </div>
+      <div id="msg"></div>
+    </div>
+  </details>
+
+  <details class="sec" id="chkSec">
+    <summary><span class="caret"></span>健康自检<span class="sum" id="chkSum">系统升级后打开本页即可确认</span></summary>
+    <div class="body">
+      <div id="selfcheck" class="first"></div>
+      <div class="actions">
+        <button id="btnCheck">重新自检</button>
+        <button id="btnRepair" data-repair="1" style="display:none">修复关机权限</button>
+      </div>
+    </div>
+  </details>
+
+  <div class="panel" style="margin-top:12px">
+    <div class="ev-hd">
+      <span class="ttl">事件</span>
+      <button class="chip on" data-ev="all">全部</button>
+      <button class="chip" data-ev="power">断电</button>
+      <button class="chip" data-ev="status">状态</button>
+      <button class="chip" data-ev="op">操作</button>
+      <button class="chip" data-ev="err">错误</button>
+    </div>
+    <ul class="events" id="events"></ul>
+  </div>
+
+  <footer>
+    网络中断或上游离线时不会触发关机；管理页面仅允许局域网访问。趋势按 5 分钟采样，断电时长误差约 ±5 分钟，数据保留 30 天。v<span id="fver"></span>
+  </footer>
+</div>
+
+<script>
+var state = null;
+
+var STATUS_ZH = {
+  OL:'市电在线', OB:'电池供电', LB:'低电量', HB:'电量低', RB:'需更换电池',
+  CHRG:'充电中', DISCHRG:'放电中', FSD:'上游强制关机', ALARM:'告警',
+  OFF:'UPS 输出关闭', BYPASS:'旁路供电', BOOST:'升压补偿', TRIM:'降压补偿',
+  OVER:'超载', CAL:'校准中', WAIT:'等待', ECO:'经济模式', NOCOMM:'通信中断'
+};
+var KIND_ZH = {
+  start:'启动', config:'配置', test:'测试', drill:'演练', status:'状态',
+  onbatt:'断电', online:'来电', shutdown:'关机', repair:'修复', error:'错误', offline:'离线'
+};
+var EV_FILTER = {
+  all: null,
+  power: ['onbatt','online','shutdown','offline'],
+  status: ['status'],
+  op: ['config','test','drill','repair','start'],
+  err: ['error']
+};
+
+function $(id){ return document.getElementById(id); }
+
+function statusZh(raw){
+  var parts = String(raw || '').trim().split(/\s+/).filter(Boolean), out = [], seen = {};
+  for (var i = 0; i < parts.length; i++){
+    var zh = STATUS_ZH[parts[i]];
+    if (zh && !seen[zh]){ seen[zh] = 1; out.push(zh); }
+  }
+  return out.length ? out.join(' · ') : (parts.length ? '状态未知' : '');
+}
+
+function annoCodes(text){
+  return String(text == null ? '' : text).replace(
+    /\b(OL|OB|LB|HB|RB|CHRG|DISCHRG|FSD|ALARM|OFF|BYPASS|BOOST|TRIM|OVER|CAL|WAIT|ECO|NOCOMM)\b(?!（)/g,
+    function(m){ return m + '（' + STATUS_ZH[m] + '）'; });
+}
+
+function esc(s){
+  return String(s == null ? '' : s).replace(/[<>&"]/g, function(ch){
+    return {'<':'&lt;','>':'&gt;','&':'&amp;','"':'&quot;'}[ch];
+  });
+}
+
+function isNum(v){ return typeof v === 'number' && isFinite(v); }
+
+function fmtDuration(sec){
+  if (!isNum(sec)) return '—';
+  sec = Math.max(0, Math.floor(sec));
+  var h = Math.floor(sec/3600), m = Math.floor((sec%3600)/60), s = sec%60;
+  if (h) return h + ' 小时 ' + m + ' 分';
+  if (m) return m + ' 分 ' + s + ' 秒';
+  return s + ' 秒';
+}
+
+function fmtShort(sec){
+  if (!isNum(sec)) return '—';
+  sec = Math.max(0, Math.floor(sec));
+  if (sec >= 3600) return Math.floor(sec/3600) + ' 时 ' + Math.floor((sec%3600)/60) + ' 分';
+  if (sec >= 60) return Math.floor(sec/60) + ' 分';
+  return sec + ' 秒';
+}
+
+function fmtClock(ts){
+  var d = new Date(ts * 1000);
+  return ('0'+d.getHours()).slice(-2) + ':' + ('0'+d.getMinutes()).slice(-2);
+}
+
+function fmtWhen(ts){
+  if (!ts) return '无记录';
+  var d = new Date(ts * 1000), now = new Date();
+  var sameDay = d.toDateString() === now.toDateString();
+  if (sameDay) return '今天 ' + fmtClock(ts);
+  var y = new Date(now.getTime() - 86400000);
+  if (d.toDateString() === y.toDateString()) return '昨天 ' + fmtClock(ts);
+  return (d.getMonth()+1) + '-' + d.getDate() + ' ' + fmtClock(ts);
+}
+
+function kv(label, value){
+  if (value === null || value === undefined || value === '') return '';
+  return '<div class="kv"><b>' + label + '</b><span>' + esc(value) + '</span></div>';
+}
+
+// -------------------------------------------------- 主渲染
+var lastSig = {dev:'', vars:'', ev:''};
+
+function render(s){
+  state = s;
+  var m = s.metrics || {}, v = s.vars || {}, c = s.config || {};
+  $('ver').textContent = 'v' + s.version;
+  $('fver').textContent = s.version;
+  $('poll').innerHTML = s.last_poll
+    ? '最近轮询 <b>' + fmtClock(s.last_poll) + '</b><br>每 ' + (c.interval || 5) + ' 秒刷新'
+    : '尚未开始轮询';
+
+  var dot = $('dot'), st;
+  dot.className = 'dot';
+  if (!s.connected){ dot.classList.add('off'); st = '未连接上游'; }
+  else if (s.status.onbatt){ dot.classList.add('batt'); st = '电池供电'; }
+  else { dot.classList.add('on'); st = '市电在线'; }
+  $('stText').textContent = st;
+
+  var sub = [];
+  if (s.status.raw) sub.push(s.status.raw);
+  if (s.status.onbatt) sub.push('已持续 ' + fmtShort(s.onbatt_elapsed));
+  else if (s.online_for) sub.push('已稳定 ' + fmtShort(s.online_for));
+  $('stSub').textContent = sub.join(' · ') || '等待数据';
+
+  $('mCharge').textContent = isNum(m.charge) ? m.charge : '—';
+  $('mRuntime').textContent = isNum(m.runtime) ? fmtShort(m.runtime) : '—';
+  $('mLoad').textContent = isNum(m.load) ? m.load : '—';
+
+  var policy;
+  if (s.shutting_down) policy = '已执行关机';
+  else if (!c.auto_shutdown) policy = '不关机';
+  else if (c.onbatt_seconds > 0) policy = '断电 ' + fmtShort(c.onbatt_seconds) + '后关机';
+  else policy = '仅 LB / FSD 兜底';
+  $('mPolicy').textContent = policy;
+
+  // 三张卡
+  $('cCharge').innerHTML = isNum(m.charge)
+    ? m.charge + '<i>%</i>' : '<span style="font-size:15px;color:var(--muted)">读不到电量</span>';
+  $('cBatRows').innerHTML = [
+    kv('低电量阈值', isNum(m.charge_low) ? m.charge_low + ' %' : ''),
+    kv('预计续航', isNum(m.runtime) ? fmtShort(m.runtime) : ''),
+    kv('电池类型', batType(m.bat_type)),
+    kv('电池电压', isNum(m.bat_voltage) ? m.bat_voltage + ' V' : '')
+  ].join('') || '<div class="kv"><b>—</b><span></span></div>';
+  renderBatteryHealth(s.battery || {});
+
+  $('cLoad').innerHTML = isNum(m.load)
+    ? m.load + '<i>%</i>' : '<span style="font-size:15px;color:var(--muted)">读不到负载</span>';
+  $('cLoadRows').innerHTML = [
+    kv('视在功率', isNum(m.power_va) ? m.power_va + ' VA' : ''),
+    kv('额定容量', isNum(m.power_nominal) ? m.power_nominal + ' VA' : ''),
+    kv('剩余余量', isNum(m.power_rest) ? m.power_rest + ' VA' : ''),
+    kv('驱动状态', s.status.raw && s.status.raw.indexOf('OVER') >= 0 ? '超载' : '正常')
+  ].join('');
+
+  $('cVolt').innerHTML = isNum(m.output_voltage)
+    ? m.output_voltage + '<i>V 输出</i>'
+    : '<span style="font-size:15px;color:var(--muted)">读不到电压</span>';
+  $('cMainsRows').innerHTML = [
+    kv('切换区间', (isNum(m.transfer_low) && isNum(m.transfer_high))
+      ? m.transfer_low + '–' + m.transfer_high + ' V' : ''),
+    kv('输入电压', isNum(m.input_voltage) ? m.input_voltage + ' V' : '驱动未上报'),
+    kv('蜂鸣器', beeper(m.beeper))
+  ].join('');
+
+  // 横幅
+  var b = $('banner');
+  $('btnRepair').style.display = (s.can_shutdown === false) ? '' : 'none';
+  b.classList.remove('show');
+  if (s.shutting_down){
+    b.classList.add('show');
+    b.innerHTML = '<b>已执行关机</b>：' + esc(s.shutdown_reason);
+  } else if (s.status.onbatt){
+    b.classList.add('show');
+    b.innerHTML = '<b>正在使用电池供电</b>，已持续 ' + fmtShort(s.onbatt_elapsed) +
+      '；' + (s.shutdown_in !== null && s.shutdown_in !== undefined
+        ? (c.auto_shutdown ? '还有 ' + fmtShort(s.shutdown_in) + '触发关机' : '自动关机未启用，不会关机')
+        : (c.auto_shutdown ? '按策略计时中' : '自动关机未启用，不会关机')) + '。';
+  } else if (!s.connected){
+    b.classList.add('show');
+    b.innerHTML = '<b>连不上上游</b>：' + esc(s.error || '未知原因') +
+      '。连接异常不会触发关机，请检查群晖的网络 UPS 服务器与允许列表。';
+  } else if (s.can_shutdown === false){
+    b.classList.add('show');
+    b.innerHTML = '<b>未取得关机权限</b>：能监控，但断电时无法关闭飞牛。' +
+      '<button data-repair="1">立即修复</button>（无需 SSH；若被拒绝，到应用中心停止再启动一次）。';
+  } else if (s.battery && (s.battery.level === 'due' || s.battery.level === 'warn')){
+    b.classList.add('show');
+    b.innerHTML = '<b>' + (s.battery.level === 'due' ? '电池该换了' : '电池接近更换周期') + '</b>：' +
+      esc(s.battery.message || '') + ' 换完电池记得在配置里更新投运日期。';
+  }
+
+  // 表单：用户正在输入时不打断
+  var ae = document.activeElement;
+  if (!(ae && (ae.tagName === 'INPUT' || ae.tagName === 'BUTTON' && ae.dataset.range))){
+    $('fHost').value = c.host || '';
+    $('fPort').value = c.port || 3493;
+    $('fUps').value = c.ups || 'ups';
+    $('fUser').value = c.username || '';
+    $('fPass').value = '';
+    $('fPass').placeholder = s.has_password ? '已保存，留空不修改' : '留空';
+    $('fInterval').value = c.interval || 5;
+    $('fWait').value = c.onbatt_seconds === 0 ? 0 : (c.onbatt_seconds || 300);
+    $('fLb').checked = !!c.shutdown_on_lb;
+    $('fFsd').checked = !!c.shutdown_on_fsd;
+    $('fAuto').checked = !!c.auto_shutdown;
+    $('fBatDate').value = c.battery_installed || '';
+    $('fBatLife').value = c.battery_life_months || 24;
+    $('fBatWarn').value = c.battery_warn_days || 60;
+  }
+  $('cfgSum').textContent = (c.auto_shutdown
+      ? (c.onbatt_seconds > 0 ? '断电 ' + fmtShort(c.onbatt_seconds) + '后关机' : '仅 LB / FSD 兜底')
+      : '只监控，不关机') + ' · ' + (c.host || '未配置上游');
+
+  renderDev(m);
+  renderVars(v);
+  renderEvents(s.events || []);
+}
+
+function renderBatteryHealth(b){
+  var box = $('cBatHealth');
+  var level = b.level || 'unknown';
+  box.className = 'bhealth ' + level;
+  var title = level === 'due' ? '该换电池了'
+            : level === 'warn' ? '电池接近更换周期'
+            : level === 'ok' ? '电池健康'
+            : '电池健康未知';
+  var nums = [];
+  if (b.replace_on) nums.push('<span>建议更换 <b>' + b.replace_on + '</b></span>');
+  if (isNum(b.measured_minutes)) nums.push('<span title="按历史断电的电量下降斜率外推，用于比较衰减趋势">实测满电约 <b>' + fmtShort(Math.round(b.measured_minutes * 60)) + '</b></span>');
+  if (isNum(b.decay_pct) && b.decay_pct > 0) nums.push('<span>较基线 <b>-' + b.decay_pct + '%</b></span>');
+  else if (isNum(b.samples) && b.samples > 0 && isNum(b.baseline_minutes)) nums.push('<span><b>' + b.samples + '</b> 次断电样本</span>');
+  box.innerHTML = '<div class="bh-hd"><i></i>' + title + '</div>' +
+    '<div class="bh-msg">' + esc(b.message || '') + '</div>' +
+    (nums.length ? '<div class="bh-nums">' + nums.join('') + '</div>' : '');
+}
+
+function batType(t){
+  if (!t) return '';
+  var map = {PbAc:'铅酸', LiOn:'锂电', LiIon:'锂电', NiCd:'镍镉', NiMH:'镍氢', '':'—'};
+  return map[t] || t;
+}
+function beeper(t){
+  if (!t) return '';
+  var map = {enabled:'开启', disabled:'静音', muted:'静音', off:'关闭'};
+  return map[t] || t;
+}
+
+function renderDev(m){
+  var rows = [
+    kv('型号', [m.mfr, m.model].filter(Boolean).join(' ')),
+    kv('序列号', m.serial),
+    kv('固件', m.firmware),
+    kv('驱动', m.driver),
+    kv('额定容量', isNum(m.power_nominal) ? m.power_nominal + ' VA' : ''),
+    kv('电池类型', batType(m.bat_type)),
+    kv('蜂鸣器', beeper(m.beeper)),
+    kv('UPS 关机延时', isNum(m.delay) ? m.delay + ' 秒' : ''),
+    kv('上次自检', [m.test_result, m.test_date].filter(Boolean).join(' · '))
+  ].join('');
+  var sig = rows;
+  $('devSum').textContent = [m.mfr, m.model].filter(Boolean).join(' ') || '—';
+  if (sig === lastSig.dev) return;
+  lastSig.dev = sig;
+  $('devBody').innerHTML = rows || '<div class="kv"><b>暂无数据</b><span></span></div>';
+}
+
+function renderVars(v){
+  var keys = Object.keys(v).sort();
+  var sig = keys.length + '|' + keys.map(function(k){ return k + '=' + v[k]; }).join(';');
+  $('varSum').textContent = keys.length ? keys.length + ' 项' : '暂无';
+  if (sig === lastSig.vars) return;
+  lastSig.vars = sig;
+  $('varList').innerHTML = keys.length
+    ? keys.map(function(k){ return '<div><b>' + esc(k) + '</b><span>' + esc(v[k]) + '</span></div>'; }).join('')
+    : '<div><b>暂无数据</b><span></span></div>';
+}
+
+var evFilter = 'all';
+function renderEvents(list){
+  var kinds = EV_FILTER[evFilter];
+  var shown = kinds ? list.filter(function(e){ return kinds.indexOf(e.kind) >= 0; }) : list;
+  var sig = evFilter + '|' + (list.length ? list[0].ts : 0) + '|' + shown.length;
+  if (sig === lastSig.ev) return;
+  lastSig.ev = sig;
+  $('events').innerHTML = shown.length ? shown.map(function(e){
+    var t = new Date(e.ts*1000);
+    var txt = '今天 ' + fmtClock(e.ts);
+    var now = new Date();
+    if (t.toDateString() !== now.toDateString()){
+      var y = new Date(now.getTime() - 86400000);
+      txt = (t.toDateString() === y.toDateString() ? '昨天 ' : (t.getMonth()+1) + '-' + t.getDate() + ' ')
+        + fmtClock(e.ts);
+    }
+    return '<li><time>' + txt + '</time><span class="tag ' + e.kind + '">' +
+      (KIND_ZH[e.kind] || e.kind) + '</span><span>' + esc(annoCodes(e.msg)) + '</span></li>';
+  }).join('') : '<li><span class="mini">该分类下暂无事件</span></li>';
+}
+
+// -------------------------------------------------- 趋势图
+var TREND = {range:'24h', data:null, geo:null};
+
+function loadTrend(){
+  fetch('/api/trend?range=' + TREND.range)
+    .then(function(r){ return r.json(); })
+    .then(function(j){ TREND.data = j; drawTrend(); renderStats(j); })
+    .catch(function(){});
+}
+
+function drawTrend(){
+  var d = TREND.data;
+  if (!d) return;
+  var svg = $('chart'), box = $('chartBox');
+  var W = Math.max(320, box.clientWidth - 12), H = 200;
+  var padL = 40, padR = 42, padT = 12, padB = 24;
+  var pts = d.points || [];
+  var now = d.now || Math.floor(Date.now()/1000);
+  var t0 = now - d.seconds, t1 = now;
+  var iw = W - padL - padR, ih = H - padT - padB;
+
+  var cs = [], ls = [];
+  for (var i = 0; i < pts.length; i++){
+    if (isNum(pts[i][1])) cs.push(pts[i][1]);
+    if (isNum(pts[i][2])) ls.push(pts[i][2]);
+  }
+  var cLo = 0, cHi = 100;
+  if (cs.length){
+    var cMin = Math.min.apply(null, cs), cMax = Math.max.apply(null, cs);
+    var span = Math.max(8, cMax - cMin);
+    cHi = Math.min(100, Math.ceil(cMax + span * 0.25));
+    cLo = Math.max(0, Math.floor(cMin - span * 0.3));
+    if (cHi - cLo < 8) cHi = Math.min(100, cLo + 8);
+  }
+  var lHi = 20;
+  if (ls.length) lHi = Math.max(10, Math.ceil(Math.max.apply(null, ls) * 1.35 / 5) * 5);
+
+  function X(t){ return padL + (t - t0) / (t1 - t0) * iw; }
+  function YC(v){ return padT + (1 - (v - cLo) / (cHi - cLo)) * ih; }
+  function YL(v){ return padT + (1 - v / lHi) * ih; }
+
+  var out = [];
+  // 横向网格 + 左右刻度
+  for (var g = 0; g <= 3; g++){
+    var y = padT + ih * g / 3;
+    out.push('<line x1="' + padL + '" y1="' + y.toFixed(1) + '" x2="' + (W - padR) +
+      '" y2="' + y.toFixed(1) + '" stroke="var(--line)" stroke-width="1"' +
+      (g === 3 ? '' : ' stroke-dasharray="3 4"') + '/>');
+    var cv = Math.round(cHi - (cHi - cLo) * g / 3);
+    var lv = Math.round(lHi - lHi * g / 3);
+    out.push('<text x="' + (padL - 7) + '" y="' + (y + 3.5).toFixed(1) +
+      '" text-anchor="end" font-size="10" fill="var(--charge)" opacity=".85">' + cv + '</text>');
+    out.push('<text x="' + (W - padR + 7) + '" y="' + (y + 3.5).toFixed(1) +
+      '" text-anchor="start" font-size="10" fill="var(--loadc)" opacity=".85">' + lv + '</text>');
+  }
+  // 断电区间
+  var k = 0;
+  while (k < pts.length){
+    if (pts[k][3]){
+      var a = pts[k][0], b = a, j = k;
+      while (j < pts.length && pts[j][3]){ b = pts[j][0]; j++; }
+      var x1 = X(a), x2 = X(b);
+      out.push('<rect x="' + x1.toFixed(1) + '" y="' + padT + '" width="' +
+        Math.max(2, x2 - x1).toFixed(1) + '" height="' + ih + '" fill="var(--bad)" opacity="0.10"/>');
+      k = j;
+    } else k++;
+  }
+  // 折线（缺值处断开）
+  function line(idx, yfn, color){
+    var path = '', pen = false;
+    for (var n = 0; n < pts.length; n++){
+      var val = pts[n][idx];
+      if (!isNum(val)){ pen = false; continue; }
+      path += (pen ? ' L' : ' M') + X(pts[n][0]).toFixed(1) + ',' + yfn(val).toFixed(1);
+      pen = true;
+    }
+    return path ? '<path d="' + path + '" fill="none" stroke="' + color +
+      '" stroke-width="2" stroke-linejoin="round" stroke-linecap="round"/>' : '';
+  }
+  out.push(line(2, YL, 'var(--loadc)'));
+  out.push(line(1, YC, 'var(--charge)'));
+  out.push('<g id="cx"></g>');
+
+  // 时间刻度
+  for (var t = 0; t <= 4; t++){
+    var ts = t0 + (t1 - t0) * t / 4;
+    var tx = X(ts);
+    var lab = d.seconds > 172800
+      ? ((new Date(ts*1000).getMonth()+1) + '-' + new Date(ts*1000).getDate())
+      : fmtClock(ts);
+    out.push('<text x="' + tx.toFixed(1) + '" y="' + (H - 6) +
+      '" text-anchor="' + (t === 0 ? 'start' : t === 4 ? 'end' : 'middle') +
+      '" font-size="10" fill="var(--muted)">' + (t === 4 ? '现在' : lab) + '</text>');
+  }
+  if (!pts.length){
+    out.push('<text x="' + (padL + iw/2) + '" y="' + (padT + ih/2) +
+      '" text-anchor="middle" font-size="12" fill="var(--muted)">还没有采样点，运行 5 分钟后开始出图</text>');
+  }
+
+  svg.setAttribute('viewBox', '0 0 ' + W + ' ' + H);
+  svg.setAttribute('height', H);
+  svg.style.width = '100%';
+  svg.innerHTML = out.join('');
+  TREND.geo = {W:W, H:H, padL:padL, padR:padR, padT:padT, padB:padB, pts:pts,
+               X:X, YC:YC, YL:YL, t0:t0, t1:t1};
+}
+
+function renderStats(d){
+  var s = d.stats || {};
+  var label = {'1h':'近 1 小时','6h':'近 6 小时','24h':'近 24 小时','7d':'近 7 天'}[d.range] || '所选区间';
+  var lastTxt = s.count ? (s.ongoing ? '进行中' : fmtWhen(s.last_at)) : '无记录';
+  $('stats').innerHTML =
+    '<div class="stat"><div class="k">' + label + '断电</div><div class="n">' + (s.count || 0) +
+      '<small>次</small></div></div>' +
+    '<div class="stat"><div class="k">累计断电时长</div><div class="n">' + fmtShort(s.total_seconds || 0) +
+      '</div></div>' +
+    '<div class="stat"><div class="k">上次断电</div><div class="n" style="font-size:15px;letter-spacing:0">' +
+      lastTxt + '</div></div>' +
+    '<div class="stat"><div class="k">最长一次</div><div class="n">' + fmtShort(s.longest_seconds || 0) +
+      '</div></div>';
+}
+
+// 光标读数
+function onHover(ev){
+  var geo = TREND.geo;
+  if (!geo || !geo.pts || !geo.pts.length) return;
+  var box = $('chartBox').getBoundingClientRect();
+  var mx = (ev.touches ? ev.touches[0].clientX : ev.clientX) - box.left - 6;
+  var best = -1, bestD = 1e9;
+  for (var i = 0; i < geo.pts.length; i++){
+    var d = Math.abs(geo.X(geo.pts[i][0]) - mx);
+    if (d < bestD){ bestD = d; best = i; }
+  }
+  if (best < 0 || bestD > 40){
+    var cxg = document.getElementById('cx');
+    if (cxg) cxg.innerHTML = '';
+    $('tip').style.display = 'none';
+    return;
+  }
+  var p = geo.pts[best], x = geo.X(p[0]);
+  var marks = '';
+  if (isNum(p[1])) marks += '<circle cx="' + x.toFixed(1) + '" cy="' + geo.YC(p[1]).toFixed(1) +
+    '" r="3.5" fill="var(--charge)" stroke="var(--panel)" stroke-width="1.5"/>';
+  if (isNum(p[2])) marks += '<circle cx="' + x.toFixed(1) + '" cy="' + geo.YL(p[2]).toFixed(1) +
+    '" r="3.5" fill="var(--loadc)" stroke="var(--panel)" stroke-width="1.5"/>';
+  var cxg2 = document.getElementById('cx');
+  if (cxg2) cxg2.innerHTML = '<line x1="' + x.toFixed(1) + '" y1="' + geo.padT + '" x2="' + x.toFixed(1) +
+    '" y2="' + (geo.padT + geo.H - geo.padT - geo.padB) + '" stroke="var(--muted)" stroke-width="1" stroke-dasharray="3 3"/>' + marks;
+
+  var parts = ['<b>' + fmtWhen(p[0]) + '</b>'];
+  if (isNum(p[1])) parts.push('<span class="m">电量</span> ' + p[1] + '%');
+  if (isNum(p[2])) parts.push('<span class="m">负载</span> ' + p[2] + '%');
+  if (p[3]) parts.push('<span style="color:var(--bad)">电池供电</span>');
+  var tip = $('tip');
+  tip.innerHTML = parts.join(' &nbsp;');
+  tip.style.display = 'block';
+  var tw = tip.offsetWidth;
+  tip.style.left = Math.min(Math.max(x + 6, tw/2 + 4), geo.W - tw/2 - 4) + 'px';
+}
+
+$('chartBox').addEventListener('mousemove', onHover);
+$('chartBox').addEventListener('touchmove', function(e){ onHover(e); }, {passive:true});
+$('chartBox').addEventListener('mouseleave', function(){
+  var cxg = document.getElementById('cx');
+  if (cxg) cxg.innerHTML = '';
+  $('tip').style.display = 'none';
+});
+window.addEventListener('resize', function(){ drawTrend(); });
+
+$('rangeChips').addEventListener('click', function(e){
+  var btn = e.target.closest('.chip');
+  if (!btn) return;
+  Array.prototype.forEach.call(this.querySelectorAll('.chip'), function(b){ b.classList.remove('on'); });
+  btn.classList.add('on');
+  TREND.range = btn.dataset.range;
+  loadTrend();
+});
+
+// 事件筛选
+document.querySelectorAll('[data-ev]').forEach(function(btn){
+  btn.addEventListener('click', function(){
+    document.querySelectorAll('[data-ev]').forEach(function(b){ b.classList.remove('on'); });
+    btn.classList.add('on');
+    evFilter = btn.dataset.ev;
+    lastSig.ev = '';
+    renderEvents(state ? state.events || [] : []);
+  });
+});
+
+// -------------------------------------------------- 交互
+function say(text, ok){
+  var m = $('msg');
+  m.textContent = text;
+  m.style.color = ok ? 'var(--ok)' : 'var(--bad)';
+  clearTimeout(say._t);
+  say._t = setTimeout(function(){ m.textContent=''; }, 8000);
+}
+
+function post(url, body){
+  return fetch(url, {
+    method:'POST', headers:{'Content-Type':'application/json'},
+    body: JSON.stringify(body||{})
+  }).then(function(r){ return r.json().then(function(j){ j._status = r.status; return j; }); });
+}
+
+function payload(){
+  return {
+    host: $('fHost').value.trim(),
+    port: parseInt($('fPort').value,10) || 3493,
+    ups: $('fUps').value.trim() || 'ups',
+    username: $('fUser').value.trim(),
+    password: $('fPass').value,
+    clear_password: $('fPass').value === '',
+    interval: parseInt($('fInterval').value,10) || 5,
+    onbatt_seconds: parseInt($('fWait').value,10) || 0,
+    shutdown_on_lb: $('fLb').checked,
+    shutdown_on_fsd: $('fFsd').checked,
+    auto_shutdown: $('fAuto').checked,
+    battery_installed: $('fBatDate').value,
+    battery_life_months: parseInt($('fBatLife').value,10) || 24,
+    battery_warn_days: parseInt($('fBatWarn').value,10) || 60
+  };
+}
+
+$('btnSave').onclick = function(){
+  var p = payload();
+  if (!p.password) delete p.password;
+  delete p.clear_password;
+  post('/api/config', p).then(function(j){
+    if (j.error){ say(j.error, false); return; }
+    say('已保存', true);
+    loadTrend();
+    tick();
+  }).catch(function(e){ say('保存失败：'+e, false); });
+};
+
+$('btnTest').onclick = function(){
+  say('正在连接…', true);
+  post('/api/test', {}).then(function(j){
+    if (j.ok){
+      var raw = j.vars['ups.status'] || '';
+      say('连接成功（'+j.ms+' ms）：' + (j.vars['device.model'] || '') + ' ' +
+          (j.status_text || (statusZh(raw) ? statusZh(raw) + '（' + raw + '）' : '')), true);
+    } else { say('连接失败：'+j.error, false); }
+  }).catch(function(e){ say('请求失败：'+e, false); });
+};
+
+$('btnDrill').onclick = function(){
+  var mins = parseInt(prompt('模拟断电持续多少分钟？', '5'), 10);
+  if (isNaN(mins)) return;
+  post('/api/drill', {scenario:'ob', minutes:mins}).then(function(j){
+    say((j.steps||[]).join(' ／ '), true);
+  }).catch(function(e){ say('演练失败：'+e, false); });
+};
+
+document.addEventListener('click', function(e){
+  var btn = e.target.closest('[data-repair]');
+  if (!btn) return;
+  if (btn.disabled) return;
+  btn.disabled = true;
+  btn.textContent = '修复中…';
+  post('/api/repair', {}).then(function(j){
+    say(j.message || (j.ok ? '已修复' : '修复失败'), !!j.ok);
+    tick();
+    runCheck();
+  }).catch(function(e){
+    say('修复失败：' + e, false);
+  }).then(function(){
+    btn.disabled = false;
+    btn.textContent = '修复关机权限';
+  });
+});
+
+$('btnCopy').onclick = function(){
+  var v = (state && state.vars) || {};
+  var text = Object.keys(v).sort().map(function(k){ return k + ': ' + v[k]; }).join('\n');
+  function done(ok){
+    $('copyMsg').textContent = ok ? '已复制 ' + Object.keys(v).length + ' 项' : '复制失败，请手动选中';
+    setTimeout(function(){ $('copyMsg').textContent = ''; }, 4000);
+  }
+  if (navigator.clipboard && navigator.clipboard.writeText){
+    navigator.clipboard.writeText(text).then(function(){ done(true); }, function(){ done(false); });
+  } else {
+    var ta = document.createElement('textarea');
+    ta.value = text; document.body.appendChild(ta); ta.select();
+    var ok = false;
+    try { ok = document.execCommand('copy'); } catch (e) {}
+    document.body.removeChild(ta); done(ok);
+  }
+};
+
+// -------------------------------------------------- 轮询
+function tick(){
+  fetch('/api/state').then(function(r){ return r.json(); }).then(render).catch(function(){
+    $('ver').textContent = '连接中断';
+  });
+}
+
+// -------------------------------------------------- 健康自检
+function runCheck(){
+  var box = $('selfcheck');
+  box.innerHTML = '<div class="chk"><span class="s">·</span><span class="d">自检中…</span></div>';
+  fetch('/api/selfcheck').then(function(r){ return r.json(); }).then(function(j){
+    var icon = {ok:'✓', warn:'!', err:'✕'};
+    box.innerHTML = (j.checks || []).map(function(c){
+      return '<div class="chk ' + c.level + '"><span class="s">' + icon[c.level] + '</span>' +
+        '<span><b>' + esc(c.title) + '</b>' + (c.detail ? ' <span class="d">' + esc(c.detail) + '</span>' : '') +
+        '</span></div>';
+    }).join('') || '<div class="chk"><span class="s">·</span><span class="d">没有返回结果</span></div>';
+    var bad = (j.checks || []).filter(function(c){ return c.level === 'err'; }).length;
+    var warn = (j.checks || []).filter(function(c){ return c.level === 'warn'; }).length;
+    $('chkSum').textContent = bad ? bad + ' 项异常' : (warn ? warn + ' 项提醒' : '全部正常');
+    if (bad) $('chkSec').open = true;
+  }).catch(function(e){
+    box.innerHTML = '<div class="chk err"><span class="s">✕</span><span><b>自检请求失败</b> ' +
+      '<span class="d">' + esc(e) + '（后端进程可能没起来，去应用中心看运行状态并点启动）</span></span></div>';
+    $('chkSum').textContent = '请求失败';
+  });
+}
+
+$('btnCheck').onclick = runCheck;
+
+tick();
+setInterval(tick, 2000);
+loadTrend();
+setInterval(loadTrend, 60000);
+runCheck();
+setTimeout(drawTrend, 300);
+</script>
+</body>
+</html>

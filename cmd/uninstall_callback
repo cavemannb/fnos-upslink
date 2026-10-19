@@ -1,0 +1,33 @@
+#!/bin/bash
+# 卸载后回调：撤掉安装时写入的关机授权，并按用户选择处理数据。
+# 刻意不用 set -e —— 卸载阶段脚本失败会让应用卡在「卸载中」。
+
+ACTION="${wizard_data_action:-keep}"
+
+# 1) 撤回最小 sudo 规则（只在确认是本应用写的那份时删）
+SUDOERS="/etc/sudoers.d/upslink"
+if [ -f "$SUDOERS" ] && grep -q 'upslink' "$SUDOERS" 2>/dev/null; then
+	rm -f "$SUDOERS" 2>/dev/null
+fi
+
+# 2) 数据：默认保留
+if [ "${TRIM_APP_STATUS:-UNINSTALL}" != "UNINSTALL" ]; then
+	exit 0
+fi
+if [ "$ACTION" != "delete" ]; then
+	exit 0
+fi
+
+DATA_LINK="${TRIM_PKGVAR:-}"
+[ -n "$DATA_LINK" ] || exit 0
+DATA_REAL="$(readlink -f "$DATA_LINK" 2>/dev/null || echo "$DATA_LINK")"
+
+# 安全护栏：只允许清理 @appdata/upslink 这一层
+case "$DATA_REAL" in
+	/vol*/@appdata/upslink|/vol*/@appdata/upslink/) ;;
+	*) exit 0 ;;
+esac
+
+find "$DATA_REAL" -mindepth 1 -maxdepth 1 -exec rm -rf -- {} + 2>/dev/null
+
+exit 0

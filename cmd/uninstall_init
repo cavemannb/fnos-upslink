@@ -1,0 +1,5 @@
+#!/bin/bash
+# 卸载前：先停服务，再让系统清理文件。任何一步失败都不阻止卸载。
+SELF_DIR="$(cd "$(dirname "$0")" && pwd)"
+"${SELF_DIR}/main" stop >/dev/null 2>&1
+exit 0

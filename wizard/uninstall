@@ -1,0 +1,33 @@
+[
+  {
+    "stepTitle": "卸载 UPS 联动",
+    "items": [
+      {
+        "type": "tips",
+        "helpText": "请选择如何处理 UPS 联动的配置与事件记录。默认保留，重新安装后可继续使用原有配置。"
+      },
+      {
+        "type": "radio",
+        "field": "wizard_data_action",
+        "label": "应用数据",
+        "initValue": "keep",
+        "options": [
+          {
+            "label": "保留配置（推荐）— 以后重新安装可延续上游地址与关机策略",
+            "value": "keep"
+          },
+          {
+            "label": "彻底删除配置 — 删除上游地址、账号密码与事件记录，且不可恢复",
+            "value": "delete"
+          }
+        ],
+        "rules": [
+          {
+            "required": true,
+            "message": "请选择如何处理应用数据"
+          }
+        ]
+      }
+    ]
+  }
+]

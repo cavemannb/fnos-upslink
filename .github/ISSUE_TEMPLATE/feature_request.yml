@@ -1,0 +1,43 @@
+name: 功能建议
+description: 希望增加或调整的能力
+title: "[Feature] "
+labels: ["enhancement"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        请先说明使用场景，再讲想要的功能——这决定了它该不该做、以及做成什么样。
+
+  - type: textarea
+    id: scene
+    attributes:
+      label: 使用场景
+      description: 你现在怎么用它，哪一步别扭
+      placeholder: 家里有第二台 NAS 也接了同一台 UPS，想让它跟着一起关
+    validations:
+      required: true
+
+  - type: textarea
+    id: proposal
+    attributes:
+      label: 期望的做法
+      description: 你希望界面上/行为上变成什么样
+
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: 你试过的替代方案
+      description: 比如手改配置、装别的工具
+
+  - type: input
+    id: ups
+    attributes:
+      label: UPS 型号（如与该功能相关）
+      placeholder: EATON SANTAK TG-BOX 600
+
+  - type: checkboxes
+    id: safety
+    attributes:
+      label: 安全相关
+      options:
+        - label: 该功能会改变关机判定逻辑（会额外走一轮「是否误关机」的评估）

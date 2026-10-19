@@ -1,0 +1,97 @@
+name: 问题反馈
+description: 安装失败、监控异常、关机策略不符合预期
+title: "[Bug] "
+labels: ["bug"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        感谢反馈。带齐下面几项能省掉一轮来回。
+        如果只是不知道怎么配置，请先看 [README](https://github.com/cavemannb/fnos-upslink#readme) 的「五分钟上手」与「常见问题」。
+
+  - type: input
+    id: version
+    attributes:
+      label: UPSLink 版本
+      description: 页面右上角显示的版本号
+      placeholder: 1.2.0
+    validations:
+      required: true
+
+  - type: input
+    id: fnos
+    attributes:
+      label: 飞牛版本与机型
+      placeholder: fnOS 0.9.x / x86_64（N100 小主机）
+    validations:
+      required: true
+
+  - type: input
+    id: ups
+    attributes:
+      label: UPS 型号与驱动
+      description: 型号在页面「设备与驱动」里，驱动名形如 usbhid-ups
+      placeholder: EATON SANTAK TG-BOX 600 / usbhid-ups
+    validations:
+      required: true
+
+  - type: dropdown
+    id: upstream
+    attributes:
+      label: 上游 NUT 服务
+      options:
+        - 群晖
+        - 绿联
+        - Unraid
+        - 树莓派 / 自建
+        - 其他（请在正文说明）
+    validations:
+      required: true
+
+  - type: textarea
+    id: symptom
+    attributes:
+      label: 现象与期望
+      description: 实际发生了什么，你认为应该是什么
+    validations:
+      required: true
+
+  - type: textarea
+    id: steps
+    attributes:
+      label: 复现步骤
+      placeholder: |
+        1. 打开页面
+        2. 点「安全演练」，输入 5
+        3. 提示显示「不关机」
+
+  - type: textarea
+    id: upsc
+    attributes:
+      label: 全部 NUT 变量
+      description: 页面展开「全部 NUT 变量」→「复制全部变量」；或在上游执行 `upsc ups`
+      render: text
+    validations:
+      required: true
+
+  - type: textarea
+    id: selfcheck
+    attributes:
+      label: 健康自检结果
+      description: 展开「健康自检」，把列表文字或截图贴过来
+      render: text
+
+  - type: textarea
+    id: logs
+    attributes:
+      label: 日志
+      description: 事件流截图；fpk 安装失败时附 `sudo tail -n 100 /var/log/trim_app_center/error.log`
+      render: text
+
+  - type: checkboxes
+    id: confirm
+    attributes:
+      label: 确认
+      options:
+        - label: 我已确认这不是上游 UPS 断电、群晖侧允许列表或防火墙导致的问题
+          required: true

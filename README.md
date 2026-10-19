@@ -4,6 +4,9 @@
 
 **纯标准库、零第三方依赖、只读监控、默认不关机。** 一个 fpk 装完，从此不用为了 NUT 配置去改 `/etc/nut/*.conf`。
 
+[![CI](https://github.com/cavemannb/fnos-upslink/actions/workflows/ci.yml/badge.svg)](https://github.com/cavemannb/fnos-upslink/actions/workflows/ci.yml)
+[![License: MIT](https://img.shields.io/badge/license-MIT-2f6bff.svg)](LICENSE)
+
 > A NUT (Network UPS Tools) client packaged as a fnOS application. Read-only monitoring, conservative auto-shutdown, 30-day trends, and battery replacement reminders. Python standard library only — no third-party packages, no Node.js runtime, no CDN.
 
 ![主界面](docs/screenshot-main.png)
@@ -252,6 +255,13 @@ python3 tools/gen_preview.py ok|due  # 生成界面预览，不连后端
 ```
 
 需要 `python3`（>= 3.8）。`build-fpk.sh` 会自检三件容易踩坑的事：归档条目不能带 `./` 前缀、`checksum` 必须等于 `app.tgz` 的 MD5、顶层结构要与官方 `fnpack` 产物一致。
+
+## 反馈与贡献
+
+- **遇到问题**：用[问题模板](../../issues/new/choose)提 issue，务必附上「全部 NUT 变量」与「健康自检」结果——这两项能覆盖八成排查。
+- **想要功能**：先讲使用场景，再说想要什么。
+- **改代码**：`bash build-fpk.sh`、`tools/smoke_test.py`、`tools/test_battery.py` 三者都通过即可提 PR（CI 会跑同样的三件事）。涉及关机判定的改动，请在描述里说明为什么不会引入新的误关机路径。
+- **原则**：默认值必须是「不关机」。任何把自动关机默认打开的改动都不会被合并。
 
 ## 声明
 

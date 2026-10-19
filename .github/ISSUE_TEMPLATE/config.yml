@@ -1,0 +1,8 @@
+blank_issues_enabled: false
+contact_links:
+  - name: 安装与配置说明
+    url: https://github.com/cavemannb/fnos-upslink#readme
+    about: 装不上、填什么、怎样确认链路通畅，先看 README
+  - name: 安全边界说明
+    url: https://github.com/cavemannb/fnos-upslink#%E5%AE%89%E5%85%A8%E8%BE%B9%E7%95%8C
+    about: 什么情况下会关机、什么情况只记日志

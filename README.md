@@ -143,7 +143,7 @@ UPS ──USB── 群晖（NUT Server，3493/TCP）
 不想用应用包、或应用中心拒装时：
 
 ```bash
-git clone https://github.com/<you>/fnos-upslink.git
+git clone https://github.com/cavemannb/fnos-upslink.git
 cd fnos-upslink
 sudo bash install-standalone.sh          # 默认 8099 端口
 # 打开 http://<飞牛IP>:8099

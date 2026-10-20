@@ -151,6 +151,17 @@ ats = [(r["at"], r["sec"]) for r in m["recent"]]
 check("重复只剩一条，新放电另算", len(m["recent"]) == 2 and
       sum(1 for a, _ in ats if a == dup["at"]) == 1, str(ats))
 
+# 双进程各自扫趋势：恢复时刻差几秒、时长相同 → 也算同一次
+reset()
+state = server._maint_default()
+state["brief"] = [{"at": NOW - 13000, "sec": 600, "c0": 100, "c1": 51},
+                  {"at": NOW - 12994, "sec": 600, "c0": 100, "c1": 51}]
+json.dump(state, open(server.MAINT_PATH, "w", encoding="utf-8"))
+m = server.maintenance_status(trend(pts))
+dups = [r for r in m["recent"] if r["sec"] == 600]
+check("恢复时刻差几秒也去重", len(dups) == 1,
+      str([(r["at"], r["sec"]) for r in m["recent"]]))
+
 # 同一份文件反复扫描（scan_at 已推进 / 未推进）都不该把同一段放电数两遍
 reset()
 m1 = server.maintenance_status(trend(pts))

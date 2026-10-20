@@ -1740,8 +1740,24 @@ $('btnCopy').onclick = function(){
 };
 
 // -------------------------------------------------- 轮询
+// 版本自检：服务端把构建版本注入 __BUILD__。升级应用后如果 WebView 还在用
+// 旧缓存的页面（__BUILD__ 落后于接口的 version），自动强刷一次——只刷一次，
+// 防止缓存顽固时陷入无限刷新。
+window.__BUILD__ = "@@APP_BUILD@@";
+function checkBuild(v){
+  if (!window.__BUILD__ || window.__BUILD__ === "@@APP_BUILD@@") return; // 占位符没被替换（本地直接开文件）
+  if (String(v) === window.__BUILD__) return;
+  var k = 'ver_reload_' + v;
+  if (sessionStorage.getItem(k)) return;   // 这个版本已经刷过一次，别循环
+  try { sessionStorage.setItem(k, '1'); } catch (e) {}
+  location.reload();
+}
+
 function tick(){
-  fetch('/api/state').then(function(r){ return r.json(); }).then(render).catch(function(){
+  fetch('/api/state').then(function(r){ return r.json(); }).then(function(s){
+    checkBuild(s.version);
+    render(s);
+  }).catch(function(){
     $('ver').textContent = '连接中断';
   });
 }

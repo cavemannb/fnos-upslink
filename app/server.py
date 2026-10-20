@@ -918,11 +918,27 @@ def mark_calibrated(at=None):
     _save_maint(state)
 
 
+def _brief_key(b):
+    return (int(b.get("at") or 0), b.get("sec") if b.get("sec") is not None else -1,
+            bool(b.get("manual")))
+
+
 _MAINT_LOCK = threading.Lock()
 
+# 两条记录的恢复时刻相差在这个窗口内、时长又一样，就视为同一次放电。
+# 双进程并存时各自扫趋势，恢复点可能差几秒，「完全相等」的精确匹配会漏。
+_BRIEF_DUP_WINDOW = 300
 
-def _brief_key(b):
-    return (int(b.get("at") or 0), b.get("sec"), bool(b.get("manual")))
+
+def _brief_same(a, b):
+    if bool(a.get("manual")) != bool(b.get("manual")):
+        return False
+    if a.get("sec") != b.get("sec"):
+        return False
+    try:
+        return abs(int(a.get("at") or 0) - int(b.get("at") or 0)) < _BRIEF_DUP_WINDOW
+    except (TypeError, ValueError):
+        return False
 
 
 def _dedup_brief(brief):
@@ -930,15 +946,13 @@ def _dedup_brief(brief):
 
     扫描和写盘没有跨进程的互斥——轮询线程与页面请求并发扫描、或 fnOS
     升级时新旧进程短暂并存，都会把同一段放电写两条（界面上是两行一模一样的
-    「10 分 · 降 49%」）。这里按 (at, sec, manual) 去重，加载时顺带清洗
-    历史数据里已经存在的重复。
+    「10 分 · 降 49%」）。两个进程算出的恢复时刻可能差几秒，所以按
+    「时长相同 + 时间相近」合并，不做精确相等比较。
     """
-    seen, out = set(), []
-    for b in brief or []:
-        key = _brief_key(b)
-        if key in seen:
+    out = []
+    for b in sorted(brief or [], key=_brief_key):
+        if out and _brief_same(b, out[-1]):
             continue
-        seen.add(key)
         out.append(b)
     return out
 
@@ -973,8 +987,8 @@ def _maintenance_status_locked(trend, events, now):
         sec = r["seconds"]
         rec = {"at": r["at"], "sec": sec, "c0": r["c0"], "c1": r["c1"]}
         # 已在记录里（并发扫描 / 双进程写重复过）就跳过统计，scan_at 照常推进
-        first_time = sec < MAINT_SHORT_MIN_SEC or _brief_key(rec) not in {
-            _brief_key(b) for b in (state.get("brief") or [])}
+        first_time = sec < MAINT_SHORT_MIN_SEC or not any(
+            _brief_same(rec, b) for b in (state.get("brief") or []))
         if sec >= MAINT_SHORT_MIN_SEC:
             state["last_short_at"] = max(int(state.get("last_short_at") or 0), r["at"])
             if first_time:
@@ -1642,6 +1656,11 @@ class Handler(BaseHTTPRequestHandler):
         }.get(ext, "application/octet-stream")
         with open(full, "rb") as f:
             data = f.read()
+        if ext == ".html":
+            # 注入当前构建版本：页面拿它和接口的 version 对比，发现自己在用
+            # 旧缓存（升级后 WebView 壳死抱着旧 HTML）就自动强刷一次
+            data = data.replace(b"@@APP_BUILD@@", APP_VERSION.encode())
+            data = data.replace(b"@@APP_BUILD_INT@@", str(int(APP_VERSION.replace(".", ""))).encode())
         self.send_response(200)
         self.send_header("Content-Type", ctype)
         self.send_header("Content-Length", str(len(data)))

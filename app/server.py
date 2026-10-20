@@ -918,14 +918,50 @@ def mark_calibrated(at=None):
     _save_maint(state)
 
 
+_MAINT_LOCK = threading.Lock()
+
+
+def _brief_key(b):
+    return (int(b.get("at") or 0), b.get("sec"), bool(b.get("manual")))
+
+
+def _dedup_brief(brief):
+    """放电记录去重：同一次放电只留一条。
+
+    扫描和写盘没有跨进程的互斥——轮询线程与页面请求并发扫描、或 fnOS
+    升级时新旧进程短暂并存，都会把同一段放电写两条（界面上是两行一模一样的
+    「10 分 · 降 49%」）。这里按 (at, sec, manual) 去重，加载时顺带清洗
+    历史数据里已经存在的重复。
+    """
+    seen, out = set(), []
+    for b in brief or []:
+        key = _brief_key(b)
+        if key in seen:
+            continue
+        seen.add(key)
+        out.append(b)
+    return out
+
+
 def maintenance_status(trend, events=None):
     """电池保养排期：短测（轻放）+ 标定（测容量），外加深度放电计数。
 
     只做建议，不碰任何关机逻辑——这里产出的 level 最多影响界面颜色。
     """
     now = int(time.time())
+    with _MAINT_LOCK:
+        return _maintenance_status_locked(trend, events, now)
+
+
+def _maintenance_status_locked(trend, events, now):
     state = _load_maint()
     dirty = False
+
+    # 清洗历史重复（并发/双进程时期写入的），有变化就顺手保存
+    brief = _dedup_brief(state.get("brief"))
+    if len(brief) != len(state.get("brief") or []):
+        state["brief"] = brief
+        dirty = True
 
     # ---- 1. 把「已经结束」的放电区间过一遍：短的记短测，长的记标定，过深的记警告
     scan = int(state.get("scan_at") or 0)
@@ -935,25 +971,30 @@ def maintenance_status(trend, events=None):
         scan = r["at"]
         dirty = True
         sec = r["seconds"]
+        rec = {"at": r["at"], "sec": sec, "c0": r["c0"], "c1": r["c1"]}
+        # 已在记录里（并发扫描 / 双进程写重复过）就跳过统计，scan_at 照常推进
+        first_time = sec < MAINT_SHORT_MIN_SEC or _brief_key(rec) not in {
+            _brief_key(b) for b in (state.get("brief") or [])}
         if sec >= MAINT_SHORT_MIN_SEC:
             state["last_short_at"] = max(int(state.get("last_short_at") or 0), r["at"])
-            brief = list(state.get("brief") or [])
-            brief.append({"at": r["at"], "sec": sec, "c0": r["c0"], "c1": r["c1"]})
-            state["brief"] = brief[-MAINT_KEEP_RECORDS:]
-            if events and sec >= 60:
-                events.add("maint", "电池短测：放电 %d 秒（电量 %s%% → %s%%），已计入保养记录"
-                           % (sec, r["c0"] if r["c0"] is not None else "?",
-                              r["c1"] if r["c1"] is not None else "?"))
+            if first_time:
+                brief = list(state.get("brief") or [])
+                brief.append(rec)
+                state["brief"] = brief[-MAINT_KEEP_RECORDS:]
+                if events and sec >= 60:
+                    events.add("maint", "电池短测：放电 %d 秒（电量 %s%% → %s%%），已计入保养记录"
+                               % (sec, r["c0"] if r["c0"] is not None else "?",
+                                  r["c1"] if r["c1"] is not None else "?"))
         minutes = sec / 60.0
         drop = None
         if isinstance(r["c0"], (int, float)) and isinstance(r["c1"], (int, float)):
             drop = r["c0"] - r["c1"]
         if minutes >= CALIB_MIN_WINDOW and drop is not None and drop >= 3:
             state["last_calib_at"] = max(int(state.get("last_calib_at") or 0), r["at"])
-            if events:
+            if events and first_time:
                 events.add("maint", "容量样本已更新：这次放电 %.1f 分钟、电量降 %.0f%%，下一次标定建议半年后"
                            % (minutes, drop))
-        if r["min_c"] is not None and r["min_c"] <= MAINT_DEEP_CHARGE:
+        if r["min_c"] is not None and r["min_c"] <= MAINT_DEEP_CHARGE and first_time:
             state["deep_count"] = int(state.get("deep_count") or 0) + 1
             state["deep_last_at"] = r["at"]
             if events:
@@ -1719,13 +1760,14 @@ class Handler(BaseHTTPRequestHandler):
         if path == "/api/maint":
             action = str(body.get("action") or "scan")
             if action == "done":
-                state = _load_maint()
-                at = int(time.time())
-                state["last_short_at"] = at
-                brief = list(state.get("brief") or [])
-                brief.append({"at": at, "sec": None, "manual": True})
-                state["brief"] = brief[-MAINT_KEEP_RECORDS:]
-                _save_maint(state)
+                with _MAINT_LOCK:
+                    state = _load_maint()
+                    at = int(time.time())
+                    state["last_short_at"] = at
+                    brief = list(state.get("brief") or [])
+                    brief.append({"at": at, "sec": None, "manual": True})
+                    state["brief"] = brief[-MAINT_KEEP_RECORDS:]
+                    _save_maint(state)
                 ENGINE.events.add("maint", "手动记录：已完成一次电池短测")
             ENGINE.maint_at = 0
             return self._json({"ok": True, "maintenance": ENGINE.refresh_maintenance(force=True)})

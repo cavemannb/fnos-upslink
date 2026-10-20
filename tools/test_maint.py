@@ -22,6 +22,7 @@ server.CALIB_PATH = os.path.join(tmp, "calibration.json")
 server.BATTERY_PATH = os.path.join(tmp, "battery.json")
 server.MAINT_PATH = os.path.join(tmp, "maintenance.json")
 server.EVENT_PATH = os.path.join(tmp, "events.log")
+server.CALIB_LOG_PATH = os.path.join(tmp, "calib-windows.json")
 
 NOW = int(time.time())
 server_engine = server.Engine()
@@ -134,5 +135,34 @@ eff, active = server_engine.effective_onbatt()
 check("阈值仍是配置里的值", active is False, str(active))
 check("配置未被改写", server_engine.conf["onbatt_seconds"] == server.DEFAULT_CONF["onbatt_seconds"],
       str(server_engine.conf["onbatt_seconds"]))
+
+print("12. 重复记录清洗与防重复写入")
+reset()
+# 模拟双进程 / 并发扫描留下的两条一模一样的记录（同一次放电写了两遍）
+dup = {"at": NOW - 13000, "sec": 600, "c0": 100, "c1": 51}
+state = server._maint_default()
+state["brief"] = [dict(dup), dict(dup)]
+state["scan_at"] = NOW - 12000
+json.dump(state, open(server.MAINT_PATH, "w", encoding="utf-8"))
+pts = [pt(NOW - 13600, 100), pt(NOW - 13000, 100, "OB"),
+       pt(NOW - 7000, 51, "OB"), pt(NOW - 6999, 51), pt(NOW, 88)]
+m = server.maintenance_status(trend(pts))
+ats = [(r["at"], r["sec"]) for r in m["recent"]]
+check("重复只剩一条，新放电另算", len(m["recent"]) == 2 and
+      sum(1 for a, _ in ats if a == dup["at"]) == 1, str(ats))
+
+# 同一份文件反复扫描（scan_at 已推进 / 未推进）都不该把同一段放电数两遍
+reset()
+m1 = server.maintenance_status(trend(pts))
+n1 = len(m1["recent"])
+m2 = server.maintenance_status(trend(pts))
+check("重复扫描不重复计数", len(m2["recent"]) == n1, "%d → %d" % (n1, len(m2["recent"])))
+
+# 手工把文件里的 scan_at 清零（相当于另一个进程的旧视图），去重仍兜底
+state = server._load_maint()
+state["scan_at"] = 0
+json.dump(state, open(server.MAINT_PATH, "w", encoding="utf-8"))
+m3 = server.maintenance_status(trend(pts))
+check("旧视图重扫也不重复", len(m3["recent"]) == n1, "%d → %d" % (n1, len(m3["recent"])))
 
 print("\n全部通过。")

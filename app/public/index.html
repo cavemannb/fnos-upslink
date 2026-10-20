@@ -1153,7 +1153,7 @@ function maintSheetBody(){
   var s = state || {};
   var m = s.maintenance || {}, sh = m.short || {}, ca = m.calib || {};
   var b = s.battery || {};
-  var out = [];
+  var out = [], items = [];
 
   // 结论句只在异常（临期 / 逾期）时出现；正常时不要让「还有 N 天」说三遍
   if (m.level !== 'ok' && m.message) out.push(alertHtml(m.message, m.level));
@@ -1164,7 +1164,7 @@ function maintSheetBody(){
     ? ' · 上次 <b>' + sh.last_days + ' 天前</b>' +
       (sh.count ? ' · 已记 <b>' + sh.count + '</b> 次' : '')
     : ' · 还没有记录';
-  out.push(mtItem({
+  items.push(mtItem({
     level: dueLevel(sh.due_in_days),
     title: '短测（轻放）',
     due: sh.due_in_days,
@@ -1188,7 +1188,7 @@ function maintSheetBody(){
   } else {
     cap.push('<span>还没有容量样本，放一次 8 分钟以上的电就有了</span>');
   }
-  out.push(mtItem({
+  items.push(mtItem({
     level: dueLevel(ca.due_in_days),
     title: '容量标定',
     info: infoBtn('为什么不是「定期放空」？'),
@@ -1201,13 +1201,15 @@ function maintSheetBody(){
 
   // ---- 深度放电：不影响排期，但它才是伤电池的那个动作
   if (m.deep_count){
-    out.push('<div class="mt-note"><b>深度放电 ' + m.deep_count + ' 次</b>' +
+    items.push('<div class="mt-note"><b>深度放电 ' + m.deep_count + ' 次</b>' +
       (isNum(m.deep_last_days) ? ' · 最近 ' + m.deep_last_days + ' 天前' : '') +
       ' · 铅酸放到 40% 以下会加速硫化，下次尽量在 60% 以上就插回市电</div>');
   }
 
   var recs = m.recent || [];
-  return out.join('') + (recs.length ? maintRecordsHtml(recs) : '');
+  // 卡片之间必须隔开：.mt 提供 12px 的 grid 间距（之前漏套这层，导致两卡贴死）
+  return out.join('') + '<div class="mt">' + items.join('') + '</div>' +
+    (recs.length ? maintRecordsHtml(recs) : '');
 }
 
 // ⓘ 说明：按钮点击后，紧随其后的 .itip 说明块展开/收起

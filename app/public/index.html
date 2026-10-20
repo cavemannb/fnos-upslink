@@ -86,6 +86,8 @@ h1{font-size:16px;font-weight:600;margin:0;letter-spacing:-.2px}
 .chip.warn b{color:inherit}
 .chip.bad{background:var(--bad-fill);color:var(--bad)}
 .chip.bad b{color:inherit}
+.chip.ok{background:var(--ok-fill);color:var(--ok)}
+.chip.ok b{color:inherit}
 .volt{font-size:var(--fs-xs);font-weight:400;color:var(--muted);margin-left:8px;
   font-variant-numeric:tabular-nums;white-space:nowrap}
 .ov-nums .sub{font-size:var(--fs-2xs);color:var(--muted);margin-top:1px;white-space:nowrap;
@@ -101,29 +103,44 @@ h1{font-size:16px;font-weight:600;margin:0;letter-spacing:-.2px}
 .st-out i{font-style:normal;color:var(--muted);opacity:.7;margin:0 7px}
 .st-out b{font-weight:600}
 
-/* 电池卡：桌面左右两栏，窄屏回落单列 */
+/* 电池健康度卡：左=结论与容量证据，右=寿命进度与待办 */
 .card{padding:var(--pad-card)}
-.card .hd{font-size:var(--fs-xs);font-weight:600;color:var(--muted);margin-bottom:6px}
-.card .big{font-size:var(--num-xl);font-weight:600;letter-spacing:-.6px;line-height:1.2;margin-bottom:7px;
-  font-variant-numeric:tabular-nums}
-.card .big i{font-style:normal;font-size:var(--fs-xs);font-weight:400;color:var(--muted);margin-left:3px}
 .card.bat{padding:var(--pad-card);margin-bottom:var(--gap-card)}
-.bat .bt{display:grid;grid-template-columns:minmax(0,.85fr) minmax(0,1.5fr);gap:22px;align-items:start}
-.bat .bt-r{min-width:0}
-.bat .bt-r .bhealth:first-child{margin-top:0;padding-top:0;border-top:0}
+.bat-hd{display:flex;align-items:center;gap:9px;flex-wrap:wrap;margin-bottom:11px}
+.bat-hl{display:flex;align-items:center;gap:8px;min-width:0}
+.bat-hd .ttl{font-size:var(--fs-md);font-weight:600;letter-spacing:-.2px}
+.bat-spec{margin-left:auto;font-size:var(--fs-2xs);color:var(--muted);font-variant-numeric:tabular-nums}
+.bat-g{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1.02fr);gap:22px;align-items:start}
+.bat-l,.bat-r{min-width:0}
 .kv{display:flex;justify-content:space-between;gap:10px;font-size:var(--fs-sm);padding:2px 0;line-height:1.6}
 .kv b{font-weight:400;color:var(--muted);white-space:nowrap}
 .kv span{text-align:right;color:var(--text);font-variant-numeric:tabular-nums}
-.bhealth{margin-top:8px;padding-top:8px;border-top:1px dashed var(--line)}
-.bhealth .bh-hd{display:flex;align-items:center;gap:6px;font-size:var(--fs-xs);font-weight:600}
-.bhealth .bh-hd i{width:6px;height:6px;border-radius:50%;background:var(--ok);flex:0 0 auto}
-.bhealth.warn .bh-hd i{background:var(--warn)}
-.bhealth.due .bh-hd i{background:var(--bad)}
-.bhealth.unknown .bh-hd i{background:var(--muted)}
-.bhealth .bh-msg{font-size:var(--fs-xs);color:var(--muted);margin-top:3px;line-height:1.55}
-.bhealth .bh-nums{display:flex;gap:12px;margin-top:5px;font-size:var(--fs-xs);color:var(--muted);flex-wrap:wrap}
-.bhealth .bh-nums b{color:var(--text);font-weight:600;font-variant-numeric:tabular-nums}
-.bcal{margin-top:8px;font-size:var(--fs-xs);color:var(--muted);line-height:1.55}
+.bhealth .bh-msg{font-size:var(--fs-sm);line-height:1.6;color:var(--muted)}
+.bhealth.warn .bh-msg{color:var(--warn)}
+.bhealth.due .bh-msg{color:var(--bad);font-weight:600}
+/* 容量证据：三个等宽数字，标签在上、数值在下 */
+.bstat{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:10px;align-content:start}
+.bstat > div{min-width:0}
+.bstat .k{display:block;font-size:var(--fs-2xs);color:var(--muted)}
+.bstat b{display:block;font-size:var(--num-md);font-weight:600;letter-spacing:-.4px;line-height:1.35;
+  font-variant-numeric:tabular-nums;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.bstat b i{font-style:normal;font-size:var(--fs-2xs);font-weight:400;color:var(--muted);margin-left:2px}
+.bstat .u{font-size:var(--fs-2xs);color:var(--muted)}
+.bstat-note{margin-top:6px;font-size:var(--fs-2xs);color:var(--muted);line-height:1.5}
+.bhealth:not(:empty) + .bstat{margin-top:10px}
+/* 寿命进度：投运 → 建议更换 */
+.life .life-hd{display:flex;align-items:baseline;gap:8px;font-size:var(--fs-xs);color:var(--muted)}
+.life .life-hd b{margin-left:auto;font-weight:600;color:var(--text);font-variant-numeric:tabular-nums}
+.life.warn .life-hd b{color:var(--warn)}
+.life.over .life-hd b{color:var(--bad)}
+.life .life-bar{height:5px;border-radius:var(--r-pill);background:var(--fill-2);margin:7px 0 5px;overflow:hidden}
+.life .life-bar i{display:block;height:100%;border-radius:var(--r-pill);background:var(--accent);transition:width .5s}
+.life.warn .life-bar i{background:var(--warn)}
+.life.over .life-bar i{background:var(--bad)}
+.life.none .life-bar i{background:var(--muted);opacity:.45}
+.life .life-lb{display:flex;justify-content:space-between;gap:10px;font-size:var(--fs-2xs);color:var(--muted);
+  font-variant-numeric:tabular-nums}
+.bcal{margin-top:10px;font-size:var(--fs-xs);color:var(--muted);line-height:1.55}
 .bcal.on{color:var(--text)}
 .bcal b{color:var(--text);font-weight:600;font-variant-numeric:tabular-nums}
 .bcal .lb{border:0;background:transparent;color:var(--accent);font:inherit;font-size:var(--fs-xs);
@@ -135,7 +152,7 @@ h1{font-size:16px;font-weight:600;margin:0;letter-spacing:-.2px}
 .bcal .row .sp{margin-left:auto}
 .bcal .mini{font-size:var(--fs-2xs);color:var(--muted)}
 .bcal:empty{display:none}
-.bmaint{margin-top:8px;padding-top:8px;border-top:1px dashed var(--line);font-size:var(--fs-xs);color:var(--muted)}
+.bmaint{margin-top:12px;padding-top:11px;border-top:1px dashed var(--line);font-size:var(--fs-xs);color:var(--muted)}
 /* 整行做成胶囊按钮：淡蓝底 + 描边 + 圆形箭头，一眼看出能点 */
 .bmaint .mrow{display:flex;align-items:center;gap:8px;width:100%;min-height:36px;padding:6px 10px;
   border:1px solid var(--accent-line);border-radius:var(--r-sm);background:var(--accent-fill);
@@ -317,8 +334,11 @@ footer{margin-top:16px;color:var(--muted);font-size:var(--fs-2xs);line-height:1.
   .ov-nums{grid-template-columns:repeat(3,1fr);gap:4px 12px;width:100%;margin-left:0}
   .ov-chips{padding:0 16px 13px;gap:5px}
   .chip{font-size:var(--fs-2xs);padding:2px 8px}
-  .bat .bt{grid-template-columns:1fr;gap:0}
-  .bat .bt-r .bhealth{margin-top:9px;padding-top:9px;border-top:1px dashed var(--line)}
+  .bat-g{grid-template-columns:1fr;gap:16px}
+  .bat-hd{margin-bottom:9px}
+  .bat-spec{margin-left:0;flex-basis:100%;order:3}
+  .bstat{margin-top:10px;gap:8px}
+  .bhealth .bh-hd{font-size:var(--fs-sm)}
   .stats4{grid-template-columns:repeat(2,minmax(0,1fr));gap:12px}
   .sum{max-width:48%}
 }
@@ -357,14 +377,20 @@ footer{margin-top:16px;color:var(--muted);font-size:var(--fs-2xs);line-height:1.
   </div>
 
   <div class="panel card bat">
-    <div class="bt">
-      <div class="bt-l">
-        <div class="hd">电池</div>
-        <div class="big" id="cCharge">—</div>
-        <div id="cBatRows"></div>
+    <div class="bat-hd">
+      <div class="bat-hl">
+        <span class="ttl">电池健康度</span>
+        <span class="chip" id="batLevel">—</span>
       </div>
-      <div class="bt-r">
+      <div class="bat-spec" id="batSpec"></div>
+    </div>
+    <div class="bat-g">
+      <div class="bat-l">
         <div id="cBatHealth" class="bhealth"></div>
+        <div class="bstat" id="cBatStats"></div>
+      </div>
+      <div class="bat-r">
+        <div class="life" id="cBatLife"></div>
         <div id="cMaint" class="bmaint"></div>
         <div id="cCalib" class="bcal"></div>
       </div>
@@ -674,15 +700,12 @@ function render(s){
   }
   $('ovChips').innerHTML = chips.join('');
 
-  // 三张卡
-  $('cCharge').innerHTML = isNum(m.charge)
-    ? m.charge + '<i>%</i>' : '<span style="font-size:15px;color:var(--muted)">读不到电量</span>';
-  $('cBatRows').innerHTML = [
-    kv('低电量阈值', isNum(m.charge_low) ? m.charge_low + ' %' : ''),
-    kv('预计续航', isNum(m.runtime) ? fmtShort(m.runtime) : ''),
-    kv('电池类型', batType(m.bat_type)),
-    kv('电池电压', isNum(m.bat_voltage) ? m.bat_voltage + ' V' : '')
-  ].join('') || '<div class="kv"><b>—</b><span></span></div>';
+  // 电池健康度卡：电量与续航已在总览卡，这里只说衰减与寿命
+  $('batSpec').textContent = [
+    batType(m.bat_type),
+    isNum(m.charge_low) ? '低压阈值 ' + m.charge_low + '%' : '',
+    isNum(m.bat_voltage) ? m.bat_voltage + ' V' : ''
+  ].filter(Boolean).join(' · ');
   renderBatteryHealth(s.battery || {});
   renderMaint(s);
   renderCalib(s);
@@ -749,21 +772,54 @@ function render(s){
 }
 
 function renderBatteryHealth(b){
-  var box = $('cBatHealth');
   var level = b.level || 'unknown';
+  var box = $('cBatHealth');
   box.className = 'bhealth ' + level;
-  var title = level === 'due' ? '该换电池了'
-            : level === 'warn' ? '电池接近更换周期'
-            : level === 'ok' ? '电池健康'
-            : '电池健康未知';
-  var nums = [];
-  if (b.replace_on) nums.push('<span>建议更换 <b>' + b.replace_on + '</b></span>');
-  if (isNum(b.measured_minutes)) nums.push('<span title="按历史断电的电量下降斜率外推，用于比较衰减趋势">实测满电约 <b>' + fmtShort(Math.round(b.measured_minutes * 60)) + '</b></span>');
-  if (isNum(b.decay_pct) && b.decay_pct > 0) nums.push('<span>较基线 <b>-' + b.decay_pct + '%</b></span>');
-  else if (isNum(b.samples) && b.samples > 0 && isNum(b.baseline_minutes)) nums.push('<span><b>' + b.samples + '</b> 次断电样本</span>');
-  box.innerHTML = '<div class="bh-hd"><i></i>' + title + '</div>' +
-    '<div class="bh-msg">' + esc(b.message || '') + '</div>' +
-    (nums.length ? '<div class="bh-nums">' + nums.join('') + '</div>' : '');
+
+  // 状态胶囊：与总览卡参数胶囊同族；结论句只在异常 / 未知时出现
+  var pill = $('batLevel');
+  pill.className = 'chip ' + (level === 'ok' ? 'ok' : level === 'warn' ? 'warn' : level === 'due' ? 'bad' : '');
+  pill.textContent = level === 'ok' ? '健康'
+                   : level === 'warn' ? '接近更换'
+                   : level === 'due' ? '该更换'
+                   : '未知';
+  box.innerHTML = level === 'ok' ? '' : '<div class="bh-msg">' + esc(b.message || '') + '</div>';
+
+  // 容量证据：实测 vs 新电基线 vs 衰减
+  var hasMeasured = isNum(b.measured_minutes);
+  var st = [];
+  st.push('<div><span class="k">实测满电</span><b>' +
+    (hasMeasured ? fmtShort(Math.round(b.measured_minutes * 60)) : '—') + '</b></div>');
+  st.push('<div><span class="k">新电基线</span><b>' +
+    (isNum(b.baseline_minutes) ? fmtShort(Math.round(b.baseline_minutes * 60)) : '—') + '</b></div>');
+  st.push('<div><span class="k">衰减</span><b>' +
+    (isNum(b.decay_pct) ? b.decay_pct + '<i>%</i>' : '—') + '</b></div>');
+  $('cBatStats').innerHTML = st.join('') +
+    '<div class="bstat-note" style="grid-column:1/-1">' + (hasMeasured
+      ? '按 ' + (b.samples || 1) + ' 次放电样本、当前负载折算；用于看趋势，不是精确续航'
+      : '还没有放电样本：等一次 8 分钟以上的真实断电，或点右侧「容量标定」造一个') + '</div>';
+
+  // 寿命进度：投运 → 建议更换
+  var life = $('cBatLife');
+  if (b.installed && b.replace_on && isNum(b.days_left)){
+    var used = isNum(b.age_days) ? b.age_days : 0;
+    var total = used + b.days_left;
+    var pct = total > 0 ? Math.max(2, Math.min(100, used / total * 100)) : 100;
+    var over = b.days_left <= 0;
+    life.className = 'life' + (over ? ' over' : level === 'warn' ? ' warn' : '');
+    life.innerHTML =
+      '<div class="life-hd"><span>寿命</span><b>' +
+        (over ? '已超期 ' + Math.abs(b.days_left) + ' 天' : '还有 ' + b.days_left + ' 天') +
+      '</b></div>' +
+      '<div class="life-bar"><i style="width:' + pct.toFixed(1) + '%"></i></div>' +
+      '<div class="life-lb"><span>' + esc(b.installed) + ' 投运</span>' +
+        '<span>' + esc(b.replace_on) + ' 到期</span></div>';
+  } else {
+    life.className = 'life none';
+    life.innerHTML =
+      '<div class="life-hd"><span>寿命</span><b>未登记</b></div>' +
+      '<div class="life-bar"><i style="width:100%"></i></div>';
+  }
 }
 
 // -------------------------------------------------- 弹窗

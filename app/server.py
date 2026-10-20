@@ -26,7 +26,7 @@ import traceback
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from urllib.parse import parse_qs, urlparse
 
-APP_VERSION = "1.9.10"
+APP_VERSION = "1.9.11"
 PORT = int(os.environ.get("UPSLINK_PORT") or os.environ.get("TRIM_SERVICE_PORT") or "8099")
 DATA_DIR = os.environ.get("TRIM_PKGVAR") or os.environ.get("UPSLINK_DATA") or "/opt/upslink/var"
 CONF_PATH = os.path.join(DATA_DIR, "config.json")
@@ -1462,7 +1462,9 @@ class Handler(BaseHTTPRequestHandler):
         self.send_response(200)
         self.send_header("Content-Type", ctype)
         self.send_header("Content-Length", str(len(data)))
-        self.send_header("Cache-Control", "no-cache")
+        # no-cache 但不带 ETag/Last-Modified 时，部分 WebView 会一直用旧缓存
+        # （表现为：接口数据是新的、界面样式是旧的）。纯局域网小文件，直接 no-store。
+        self.send_header("Cache-Control", "no-store")
         self.end_headers()
         self.wfile.write(data)
 

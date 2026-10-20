@@ -184,6 +184,13 @@ dup2 = [{"at": NOW - 13000, "sec": 600},
 check("区间交叉即同一条", len(server._dedup_brief(dup2)) == 1,
       str([server._brief_span(b) for b in server._dedup_brief(dup2)]))
 
+# 合并时保留覆盖更长的那条（短的可能是另一个进程少算了开头）
+pair = [{"at": NOW - 13000, "sec": 300},
+        {"at": NOW - 12900, "sec": 600}]
+kept = server._dedup_brief(pair)
+check("合并保留覆盖更长的一条", len(kept) == 1 and kept[0]["sec"] == 600,
+      str([(b["at"], b["sec"]) for b in kept]))
+
 # 首尾相接但中间隔着市电在线 → 两次独立的短测，不能合并
 seq = [{"at": NOW - 13000, "sec": 600},
        {"at": NOW - 12000, "sec": 600}]

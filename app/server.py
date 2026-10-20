@@ -975,9 +975,22 @@ def _dedup_brief(brief):
     """
     out = []
     for b in sorted(brief or [], key=_brief_key):
-        if any(_brief_same(b, o) for o in out):
-            continue
-        out.append(b)
+        hit = None
+        for i, o in enumerate(out):
+            if _brief_same(b, o):
+                hit = i
+                break
+        if hit is None:
+            out.append(b)
+        else:
+            # 同一次放电被记了两遍时保留覆盖更长的那条：两个进程扫趋势的
+            # 起点可能不同，短的那条会少算掉开头一段。
+            b0, b1 = _brief_span(b)
+            o0, o1 = _brief_span(out[hit])
+            if (b1 - b0) > (o1 - o0):
+                out[hit] = b
+    # 合并后可能换过条目，重排一次保证仍然是「旧 → 新」（_recent_briefs 依赖）
+    out.sort(key=_brief_key)
     return out
 
 

@@ -5,9 +5,11 @@
   1. manifest 的 version 末位 +1（patch 满 100 进位到 minor，避免 1.9.137 这种版本）
   2. app/server.py 的 APP_VERSION 同步（页面底部与 /api/state 都读它）
   3. manifest 的 changelog 字段改成一句话（飞牛安装时显示）
-  4. CHANGELOG.md 顶部插入当天的自动条目
-  5. 生成 release-notes.md 给 gh release create 用
-本地不要手动跑，否则版本号会跳到远端前面。
+  4. 生成 release-notes.md 给 gh release create 用
+
+不改 CHANGELOG.md：那个文件是人工维护的功能说明，自动发版每天往里写会跟本地改动打架，
+自动版本的说明放 Release 正文就够了。
+本地不要手动跑，否则版本号会跳到远端前面；同步远端版本请用 tools/sync_version.py。
 """
 import datetime as dt
 import os
@@ -18,7 +20,6 @@ import sys
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 MANIFEST = os.path.join(ROOT, "manifest")
 SERVER = os.path.join(ROOT, "app", "server.py")
-CHANGELOG = os.path.join(ROOT, "CHANGELOG.md")
 NOTES = os.path.join(ROOT, "release-notes.md")
 CST = dt.timezone(dt.timedelta(hours=8))
 
@@ -106,16 +107,8 @@ def main():
     srv = re.sub(r'APP_VERSION = "[^"]*"', 'APP_VERSION = "%s"' % new, srv, count=1)
     write(SERVER, srv)
 
-    # CHANGELOG：顶部插入当天条目
-    items = commits or ["例行构建，无功能性改动。"]
-    entry = "## %s · %s（自动发布）\n\n%s\n\n" % (
-        new, today, "\n".join("- " + c for c in items))
-    log = read(CHANGELOG)
-    marker = "# 更新日志\n\n"
-    assert marker in log, "CHANGELOG.md 结构变了，找不到标题行"
-    write(CHANGELOG, log.replace(marker, marker + entry, 1))
-
     # Release 说明
+    items = commits or ["例行构建，无功能性改动。"]
     write(NOTES, "\n".join([
         "## 自动发布 · %s" % today,
         "",

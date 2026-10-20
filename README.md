@@ -162,7 +162,7 @@ UPS ──USB── 群晖（NUT Server，3493/TCP）
 
 ### 方式一：应用包（推荐）
 
-从 [Releases](../../releases/latest) 下载最新的 `upslink-<版本>.fpk`（仓库内 `dist/` 也有构建产物）：
+从 [Releases](../../releases/latest) 下载最新的 `upslink-<版本>.fpk`：
 
 > 应用中心 → 右下角「手动安装」→ 选择 fpk
 
@@ -270,10 +270,12 @@ fnOS 自带 NUT，装额外包可能版本冲突；本应用直接用明文协�
 │   ├── test_battery.py     电池健康逻辑单元测试
 │   ├── test_calib.py       容量标定状态机单元测试
 │   ├── test_maint.py       电池保养排期单元测试
+│   ├── bump_version.py     自动发版用：递增版本号、生成发布说明
+│   ├── sync_version.py     把自动发版后的远端版本号同步回本地
 │   └── nas-doctor.sh       只读体检脚本
 ├── manifest                应用元信息（版本、端口、平台）
 ├── build-fpk.sh            一键构建
-└── dist/                   构建产物
+└── dist/                   本地构建产物（不入库，安装包走 Releases）
 ```
 
 ## 构建与测试

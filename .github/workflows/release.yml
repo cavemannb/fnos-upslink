@@ -70,19 +70,28 @@ jobs:
         run: python3 tools/bump_version.py
 
       - name: 构建 fpk
+        env:
+          VER: ${{ steps.bump.outputs.ver }}
         run: |
+          set -e
           bash build-fpk.sh
+          # dist/ 里可能残留仓库带下来的历史包，只留本次构建的那一个
+          find dist -name '*.fpk' ! -name "upslink-$VER.fpk" -delete
           ls -lh dist/
 
       - name: 校验包内结构
+        env:
+          VER: ${{ steps.bump.outputs.ver }}
         run: |
           set -e
-          FPK=$(ls dist/*.fpk | head -1)
+          FPK="dist/upslink-$VER.fpk"
+          test -f "$FPK" || { echo "错误：没有找到 $FPK"; exit 1; }
           if tar -tzf "$FPK" | grep -q '^\./'; then
             echo "错误：归档条目带 ./ 前缀，fnOS 会拒绝安装"; exit 1
           fi
           tar -xzOf "$FPK" manifest | grep -E '^(version|checksum)[[:space:]]*='
           tar -xzOf "$FPK" manifest | grep -qE '^checksum[[:space:]]*=[[:space:]]*[0-9a-f]{32}$'
+          tar -xzOf "$FPK" manifest | grep -qE "^version[[:space:]]*=[[:space:]]*$VER$"
 
       - name: 提交版本号回写
         env:
@@ -91,7 +100,7 @@ jobs:
           set -e
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add manifest app/server.py CHANGELOG.md
+          git add manifest app/server.py
           # 这个提交本身会被下一次运行排除（见 bump_version.py 的 --invert-grep）
           git commit -m "chore(release): v$VER"
           git push
@@ -107,6 +116,6 @@ jobs:
             echo "Tag $TAG 已存在，跳过发布（避免覆盖已发布版本）"
             exit 0
           fi
-          gh release create "$TAG" dist/*.fpk \
+          gh release create "$TAG" "dist/upslink-$VER.fpk" \
             --title "UPSLink $VER" \
             --notes-file release-notes.md

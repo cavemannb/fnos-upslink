@@ -162,9 +162,11 @@ UPS ──USB── 群晖（NUT Server，3493/TCP）
 
 ### 方式一：应用包（推荐）
 
-从 [Releases](../../releases) 下载 `upslink-1.8.3.fpk`（仓库内 `dist/` 也有同名文件）：
+从 [Releases](../../releases/latest) 下载最新的 `upslink-<版本>.fpk`（仓库内 `dist/` 也有构建产物）：
 
 > 应用中心 → 右下角「手动安装」→ 选择 fpk
+
+版本号每天自动递增：只要当天代码有改动，09:00 会自动构建并发一个 Release；没改动的日子不发版。想尝鲜可以盯 [Releases](../../releases)，想稳妥就隔一段时间装一次最新版。
 
 装完桌面出现「UPS 联动」。本应用**不需要 Node.js**，只依赖 fnOS 自带的 `python3`。
 
@@ -288,6 +290,15 @@ python3 tools/gen_preview.py ok|due|calib|maint   # 生成界面预览，不连�
 `gen_preview.py` 的每个模式都会同时输出亮色页和 `demo_dark.html`（强制深色副本），改样式时不用切系统主题就能两套一起看。
 
 需要 `python3`（>= 3.8）。`build-fpk.sh` 会自检三件容易踩坑的事：归档条目不能带 `./` 前缀、`checksum` 必须等于 `app.tgz` 的 MD5、顶层结构要与官方 `fnpack` 产物一致。CI 跑的是同一套检查（Python 3.11）。
+
+### 自动发版
+
+`.github/workflows/release.yml` 每天北京时间 09:00 跑一次：过去 24 小时若 `app/`、`tools/`、`manifest` 等代码路径有提交，就递增补丁号（`1.9.1` → `1.9.2`）、同步 `app/server.py` 的 `APP_VERSION`、在 `CHANGELOG.md` 顶部插入当天条目，构建 fpk 后创建对应 tag 的 Release。只改 README 或截图不会触发发版。
+
+- 版本号回写由机器人提交（`chore(release): vX.Y.Z`），这类提交会被下一次检查排除，自己不会触发自己。
+- 想立刻发一版：Actions → 每日发布 → Run workflow，勾上 `force`。
+- 同一版本号已有 Release 时跳过，不会覆盖已发布的包。
+- 自动发版后本地仓库会落后一个版本，`python3 tools/sync_version.py` 把远端版本号拉回来（否则下次本地构建出来的包版本号与远端不一致）。
 
 ## 反馈与贡献
 

@@ -1,0 +1,112 @@
+name: 每日发布
+
+# 每天北京时间 09:00（UTC 01:00）检查一次：过去 24 小时只要有代码改动，
+# 就自动递增补丁号、构建 fpk 并发 Release；没有改动的日子直接跳过。
+# 也可以手动触发（Actions 页面 → 每日发布 → Run workflow）。
+
+on:
+  schedule:
+    - cron: "0 1 * * *"
+  workflow_dispatch:
+    inputs:
+      force:
+        description: "即使没检测到代码改动也强制发版"
+        type: boolean
+        default: false
+
+permissions:
+  contents: write
+
+concurrency:
+  group: daily-release
+  cancel-in-progress: false
+
+jobs:
+  detect:
+    name: 检查当天改动
+    runs-on: ubuntu-latest
+    outputs:
+      has: ${{ steps.scan.outputs.has }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - id: scan
+        env:
+          FORCE: ${{ github.event.inputs.force }}
+        run: |
+          set -e
+          if [ "$FORCE" = "true" ]; then
+            echo "手动强制发版，跳过改动检查"
+            echo "has=true" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          python3 tools/bump_version.py --check
+
+  release:
+    name: 构建并发布
+    needs: detect
+    if: needs.detect.outputs.has == 'true'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: 全量测试
+        run: |
+          python tools/smoke_test.py
+          python tools/test_battery.py
+          python tools/test_calib.py
+          python tools/test_maint.py
+
+      - name: 递增版本号
+        id: bump
+        run: python3 tools/bump_version.py
+
+      - name: 构建 fpk
+        run: |
+          bash build-fpk.sh
+          ls -lh dist/
+
+      - name: 校验包内结构
+        run: |
+          set -e
+          FPK=$(ls dist/*.fpk | head -1)
+          if tar -tzf "$FPK" | grep -q '^\./'; then
+            echo "错误：归档条目带 ./ 前缀，fnOS 会拒绝安装"; exit 1
+          fi
+          tar -xzOf "$FPK" manifest | grep -E '^(version|checksum)[[:space:]]*='
+          tar -xzOf "$FPK" manifest | grep -qE '^checksum[[:space:]]*=[[:space:]]*[0-9a-f]{32}$'
+
+      - name: 提交版本号回写
+        env:
+          VER: ${{ steps.bump.outputs.ver }}
+        run: |
+          set -e
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add manifest app/server.py CHANGELOG.md
+          # 这个提交本身会被下一次运行排除（见 bump_version.py 的 --invert-grep）
+          git commit -m "chore(release): v$VER"
+          git push
+
+      - name: 发布 Release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          VER: ${{ steps.bump.outputs.ver }}
+        run: |
+          set -e
+          TAG="v$VER"
+          if gh release view "$TAG" >/dev/null 2>&1; then
+            echo "Tag $TAG 已存在，跳过发布（避免覆盖已发布版本）"
+            exit 0
+          fi
+          gh release create "$TAG" dist/*.fpk \
+            --title "UPSLink $VER" \
+            --notes-file release-notes.md

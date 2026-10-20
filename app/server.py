@@ -52,6 +52,11 @@ CALIB_FLOOR_CHARGE = 50         # 电量降到这个数就中止，别把电池�
 CALIB_MIN_WINDOW = 8            # 与 measure_capacity 的门槛一致，用于提示文案
 CALIB_HINT_MAX = 12             # 建议放电时长上限，别把电池放太狠
 CALIB_GRACE = 180               # 标定结束后留给用户插回市电的宽限（秒）
+# 标定窗口流水：用来把「人为拔电标定」和「真的断电」分开。窗口结束后放电
+# 可能还会延续到宽限期里，所以判定要给一点余量。
+CALIB_LOG_PATH = os.path.join(DATA_DIR, "calib-windows.json")
+CALIB_LOG_KEEP = 12
+CALIB_WINDOW_SLACK = 120
 
 # 电池保养：铅酸电池没有记忆效应，深度放电只会加速硫化。
 # 所以这里排的是「短时轻放」和「半年一次标定」，不是「定期放空」。
@@ -516,6 +521,11 @@ def _save_battery_state(state):
 def ob_runs(trend):
     """把趋势采样切成一段段电池供电区间，供容量计算和保养统计共用。
 
+    区间结束时刻取「恢复市电后的第一条采样」而不是最后一个 OB 采样：
+    常规采样是 5 分钟一个点，90 秒的短测整段只有 1 个 OB 点，用最后一个
+    OB 点算时长会得到 0 秒（界面上就成了「上次断电 · 0 秒」）。状态一变
+    趋势里会立刻补点，所以用恢复点的时刻能把误差压到轮询间隔量级。
+
     open=True 表示这段还在放电（最后一条采样仍是 OB），此时「时长」只是
     到目前为止的跨度，调用方要自己决定是否采信。
     """
@@ -529,20 +539,22 @@ def ob_runs(trend):
         if ob:
             cur.append(s)
         elif cur:
-            runs.append((cur, False))
+            runs.append((cur, False, s.get("t")))
             cur = []
     if cur:
-        runs.append((cur, True))
+        runs.append((cur, True, None))
 
     out = []
-    for run, is_open in runs:
+    for run, is_open, end_t in runs:
         a, b = run[0], run[-1]
+        start = a.get("t", 0) or 0
+        end = (end_t or b.get("t", 0) or start)
         cs = [x.get("c") for x in run if isinstance(x.get("c"), (int, float))]
         loads = [x.get("l") for x in run if x.get("l")]
         out.append({
-            "start": a.get("t", 0),
-            "at": b.get("t", 0),
-            "seconds": max(0, int(b.get("t", 0) - a.get("t", 0))),
+            "start": start,
+            "at": end,
+            "seconds": max(0, int(end - start)),
             "c0": a.get("c"),
             "c1": b.get("c"),
             "min_c": min(cs) if cs else None,
@@ -551,6 +563,123 @@ def ob_runs(trend):
             "open": is_open,
         })
     return out
+
+
+def _load_calib_log():
+    try:
+        with open(CALIB_LOG_PATH, "r", encoding="utf-8") as f:
+            return (json.load(f) or {}).get("windows") or []
+    except Exception:
+        return []
+
+
+def _save_calib_log(windows):
+    try:
+        tmp = CALIB_LOG_PATH + ".tmp"
+        with open(tmp, "w", encoding="utf-8") as f:
+            json.dump({"windows": list(windows)[-CALIB_LOG_KEEP:]}, f,
+                      ensure_ascii=False, indent=2)
+        os.replace(tmp, CALIB_LOG_PATH)
+    except Exception:
+        pass
+
+
+def calib_log_start(ts):
+    """记下这次标定的窗口，后面用它把人为放电和真断电区分开。"""
+    windows = _load_calib_log()
+    windows.append({"start": int(ts), "end": None, "grace_until": 0})
+    _save_calib_log(windows)
+
+
+def calib_log_end(ts, grace_until=0):
+    windows = _load_calib_log()
+    if not windows:
+        return
+    windows[-1]["end"] = int(ts)
+    windows[-1]["grace_until"] = int(grace_until or 0)
+    _save_calib_log(windows)
+
+
+def in_calib_window(ts, windows=None):
+    """这个时刻是否落在某次容量标定（含结束后的宽限）里。"""
+    try:
+        ts = int(ts or 0)
+    except (TypeError, ValueError):
+        return False
+    if not ts:
+        return False
+    if windows is None:
+        windows = _load_calib_log()
+    for w in windows:
+        start = int(w.get("start") or 0)
+        end = int(w.get("end") or w.get("until") or 0)
+        if not end:
+            # 还没收口的窗口 = 标定正在进行，从开始时刻起一直有效
+            if ts >= start:
+                return True
+            continue
+        end = max(end, int(w.get("grace_until") or 0))
+        if start <= ts <= end + CALIB_WINDOW_SLACK:
+            return True
+    return False
+
+
+def classify_discharge(run, windows=None):
+    """给一段电池供电标来源：calib（标定）、blip（瞬断）、test（短测）、outage。
+
+    「短测」和「几分钟的市电抖动」在数据上无法区分——两者都是一两分钟的
+    放电，所以 test 这个类别只代表时长，不代表动机。界面上叫「短测」是因为
+    这个长度的电池供电基本都是用户主动做的保养动作；几十秒的则大概率是
+    市电抖动，单独叫「瞬断」。
+    """
+    if in_calib_window(run.get("start"), windows) or in_calib_window(run.get("at"), windows):
+        return "calib"
+    if run.get("open"):
+        # 正在放电：最终会持续多久还不知道，别急着叫它短测
+        return "outage"
+    sec = run.get("seconds") or 0
+    if sec < 60:
+        return "blip"
+    if sec < CALIB_MIN_WINDOW * 60:
+        return "test"
+    return "outage"
+
+
+def outage_summary(runs, windows=None):
+    """总览卡要显示的那一次放电：优先真断电，没有就退回最近一次测试/标定。
+
+    之前这里直接取 runs[-1]，于是「刚做完 90 秒短测」会把上次断电的时间
+    和时长一起顶掉，看起来像真断了一次电；标定（人为拔电 10 分钟）也会被
+    当成一次真实的 10 分钟断电。现在按来源挑：有真断电就显示真断电，只有
+    测试/标定时仍然显示最近那一次，但带 kind 让前端换前缀词。
+
+    另外把「最近一次电池供电」放进 latest（当它不是被选中的那一次时），
+    悬停能看到，信息不丢。
+    """
+    if not runs:
+        return None
+    picked = None
+    for r in reversed(runs):
+        kind = classify_discharge(r, windows)
+        if kind == "outage":
+            picked = _outage_info(r, kind)
+            break
+    if picked is None:
+        picked = _outage_info(runs[-1], classify_discharge(runs[-1], windows))
+    last = runs[-1]
+    if last.get("at") != picked.get("at"):
+        picked["latest"] = _outage_info(last, classify_discharge(last, windows))
+    return picked
+
+
+def _outage_info(r, kind):
+    return {
+        "at": r.get("at"),
+        "start": r.get("start"),
+        "seconds": r.get("seconds") or 0,
+        "ongoing": bool(r.get("open")),
+        "kind": kind,
+    }
 
 
 def measure_capacity(trend, charge_low=20):
@@ -959,11 +1088,17 @@ class Engine:
         self.calib = None
         self.calib_last = None
         self.calib_grace_until = 0
+        self._calib_ver = 0             # 标定窗口变化时 +1，让 _last_outage 缓存失效
         # 标定状态只存在于内存 + 一个提示文件；配置本身从不改动，
         # 所以进程重启后直接作废是安全的一侧。
         if _load_calib():
             _clear_calib()
             self.events.add("calibrate", "上次容量标定因进程重启中断；断电阈值本就没被改动，已回原值")
+            # 中断的那次没有结束时刻，补一个，别让它一直盖住后面的放电区间
+            windows = _load_calib_log()
+            if windows and not windows[-1].get("end"):
+                windows[-1]["end"] = int(time.time())
+                _save_calib_log(windows)
 
     # ---- 状态解析 ----
     @staticmethod
@@ -1026,19 +1161,20 @@ class Engine:
 
     # ---- 有记录以来最近一次断电（不受趋势图时间跨度影响）----
     def _last_outage(self):
+        """最近一次放电，按来源区分：真断电 / 标定 / 短测。
+
+        优先返回真断电——短测和标定是人为造的放电，不能顶掉「上次断电」
+        这条信息；只有确实没有真断电记录时才退回最近那一次并标注来源。
+        """
         with self.lock:
             n = len(self.trend.samples)
             last_t = self.trend.samples[-1].get("t", 0) if self.trend.samples else 0
             cached = self._outage_cache
-            if cached and cached[0] == (n, last_t):
+            if cached and cached[0] == (n, last_t, self._calib_ver):
                 return cached[1]
-        info = None
-        runs = ob_runs(self.trend)
-        if runs:
-            r = runs[-1]
-            info = {"at": r["at"], "seconds": r["seconds"], "ongoing": bool(r["open"])}
+        info = outage_summary(ob_runs(self.trend), _load_calib_log())
         with self.lock:
-            self._outage_cache = ((n, last_t), info)
+            self._outage_cache = ((n, last_t, self._calib_ver), info)
         return info
 
     # ---- 关机 ----
@@ -1111,6 +1247,9 @@ class Engine:
             calib = dict(self.calib)
         self.calib_grace_until = 0
         _save_calib(calib)
+        calib_log_start(calib["started"])   # 记窗口：这次放电算标定，不算断电
+        with self.lock:
+            self._calib_ver += 1
         self.events.add("calibrate", "开始容量标定：%d 分钟窗口内不因断电计时关机（临时阈值 %d 秒）"
                         % (calib["window"], calib["target"]))
         self.battery_at = 0
@@ -1175,6 +1314,9 @@ class Engine:
             result["message"] = msg + "。现在还在放电，已宽限 %d 秒，请尽快插回市电" % CALIB_GRACE
         else:
             self.calib_grace_until = 0
+        calib_log_end(result["at"], self.calib_grace_until)   # 窗口收口，后续放电才可能算真断电
+        with self.lock:
+            self._calib_ver += 1
         if runs:
             mark_calibrated(result["at"])      # 标定成功即刷新保养排期
         self.maint_at = 0

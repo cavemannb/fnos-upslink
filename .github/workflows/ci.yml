@@ -35,6 +35,9 @@ jobs:
       - name: 电池保养排期（11 组）
         run: python tools/test_maint.py
 
+      - name: 断电来源判定（11 组 29 项）
+        run: python tools/test_outage.py
+
       - name: 版本号规则（10 项）
         run: python tools/test_bump.py
 

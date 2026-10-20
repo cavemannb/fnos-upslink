@@ -73,6 +73,13 @@ else:
     battery = BATTERY_OK
 maint = MAINT_DUE if mode in ("maint", "due") else MAINT_OK
 
+# 总览卡「上次断电」：真断电优先；worn 模式演示「只有短测」时的前缀词
+if mode == "worn":
+    last_outage = '{at:NOW-7200, seconds:96, ongoing:false, kind:"test"}'
+else:
+    last_outage = ('{at:NOW-1123200, seconds:1260, ongoing:false, kind:"outage",'
+                   ' latest:{at:NOW-5400, seconds:96, ongoing:false, kind:"test"}}')
+
 DEMO = """<script>
 var VARS = {
   "ups.status":"OL CHRG", "battery.charge":"100", "battery.charge.low":"20",
@@ -102,7 +109,7 @@ var DEMO_STATE = {
   onbatt_elapsed:0, online_for:8040, shutdown_in:null,
   shutting_down:false, shutdown_reason:"", can_shutdown:true, has_password:false,
   battery: %(battery)s, maintenance: %(maint)s, calib_hint:8, calib_grace_left:0,
-  last_outage:{at:NOW-1123200, seconds:270, ongoing:false},
+  last_outage:%(last_outage)s,
   shutdown_threshold:300, calibration:IDLE_CALIB,
   config:{host:"192.168.1.20", port:3493, ups:"ups", username:"monuser",
     interval:5, onbatt_seconds:300, shutdown_on_lb:true, shutdown_on_fsd:true,
@@ -184,7 +191,8 @@ window.fetch = function(url){
   return Promise.resolve({ok:true, status:200, json:function(){ return Promise.resolve(body); }});
 };
 </script>
-""" % {"battery": battery, "maint": maint, "mode": mode, "ver": APP_VER}
+""" % {"battery": battery, "maint": maint, "mode": mode, "ver": APP_VER,
+       "last_outage": last_outage}
 
 
 def charging(demo, charge=96):

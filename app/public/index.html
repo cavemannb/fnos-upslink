@@ -551,7 +551,7 @@ footer{margin-top:16px;color:var(--muted);font-size:var(--fs-2xs);line-height:1.
   </div>
 
   <footer>
-    网络中断或上游离线时不会触发关机；管理页面仅允许局域网访问。趋势按 5 分钟采样，断电时长误差约 ±5 分钟，数据保留 30 天。v<span id="fver"></span>
+    网络中断或上游离线时不会触发关机；管理页面仅允许局域网访问。断电时长按状态变化时刻记录（误差约 ±10 秒），趋势曲线按 5 分钟采样，数据保留 30 天。v<span id="fver"></span>
   </footer>
 </div>
 
@@ -715,6 +715,24 @@ function fmtWhen(ts){
   return (d.getMonth()+1) + '-' + d.getDate() + ' ' + fmtClock(ts);
 }
 
+// 总览卡「上次断电」的悬停说明：讲清这次是什么放电、为什么不算断电
+function outageTip(lo){
+  var why = {
+    outage: '持续 8 分钟以上的电池供电，按断电统计',
+    calib: '容量标定期间的放电（人为拔电测容量），不计入断电',
+    test: '短测级别的放电（1~8 分钟），不计入断电',
+    blip: '几十秒的瞬断，多为市电抖动，不计入断电'
+  }[lo.kind] || '';
+  var s = (why ? why + '。' : '') + '本次持续 ' + fmtDuration(lo.seconds || 0);
+  if (lo.latest && isNum(lo.latest.at)){
+    var L = {outage:'断电', calib:'标定', test:'短测', blip:'瞬断'};
+    s += '\n最近一次电池供电：' + fmtWhen(lo.latest.at) + ' · ' +
+      (L[lo.latest.kind] || '放电') + ' ' + fmtDuration(lo.latest.seconds || 0);
+  }
+  s += '\n统计范围：趋势保留的最近 30 天';
+  return s;
+}
+
 function kv(label, value){
   if (value === null || value === undefined || value === '') return '';
   return '<div class="kv"><b>' + label + '</b><span>' + esc(value) + '</span></div>';
@@ -755,13 +773,19 @@ function render(s){
 
   // 有记录以来最近一次断电（不受下方时间跨度筛选影响）：
   // 单独一段、颜色深一档，时间和时长加粗，扫一眼就能读到。
+  // 短测和容量标定都是人为造的放电，不能冒充「断电」：后端按来源挑了真断电，
+  // 只有确实没有真断电记录时才退回测试记录，这里用不同前缀词把来源讲明白。
   var lo = s.last_outage;
   if (lo && isNum(lo.at)){
-    $('stOut').innerHTML = '<i>·</i>上次断电 <b>' +
-      esc(lo.ongoing ? '进行中' : fmtWhen(lo.at)) + '</b> · <b>' +
-      esc(fmtShort(lo.seconds || 0)) + '</b>';
+    var OUT_ZH = {outage:'上次断电', calib:'上次标定', test:'上次短测', blip:'上次瞬断'};
+    var head = OUT_ZH[lo.kind] || '上次断电';
+    var when = lo.ongoing ? '进行中' : fmtWhen(lo.at);
+    var dur = (lo.ongoing ? '已 ' : '') + fmtShort(lo.seconds || 0);
+    $('stOut').innerHTML = '<i>·</i>' + head + ' <b>' + esc(when) + '</b> · <b>' + esc(dur) + '</b>';
+    $('stOut').title = outageTip(lo);
   } else {
     $('stOut').textContent = '';
+    $('stOut').title = '';
   }
 
   // 电压紧跟状态词；有输出电压用输出，退而求其次用输入

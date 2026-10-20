@@ -64,6 +64,7 @@ jobs:
           python tools/test_battery.py
           python tools/test_calib.py
           python tools/test_maint.py
+          python tools/test_outage.py
           python tools/test_bump.py
 
       - name: 递增版本号

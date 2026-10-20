@@ -288,7 +288,7 @@ bash build-fpk.sh                            # 产物：dist/upslink-<version>.f
 python3 tools/smoke_test.py                  # 冒烟测试（10 项，内置假 NUT 服务端）
 python3 tools/test_battery.py                # 电池健康逻辑（10 组）
 python3 tools/test_calib.py                  # 容量标定状态机（10 组）
-python3 tools/test_maint.py                  # 保养排期与逾期判定（12 组）
+python3 tools/test_maint.py                  # 保养排期与逾期判定（13 组）
 python3 tools/test_outage.py                 # 断电/短测/标定的来源判定（29 项）
 python3 tools/test_bump.py                   # 版本号递增规则（10 项）
 python3 tools/gen_preview.py ok|due|worn|charge|calib|maint  # 生成界面预览，不连后端

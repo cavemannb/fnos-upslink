@@ -925,20 +925,44 @@ def _brief_key(b):
 
 _MAINT_LOCK = threading.Lock()
 
-# 两条记录的恢复时刻相差在这个窗口内、时长又一样，就视为同一次放电。
-# 双进程并存时各自扫趋势，恢复点可能差几秒，「完全相等」的精确匹配会漏。
-_BRIEF_DUP_WINDOW = 300
+# 手动登记（没有时长）的记录退化成一个时刻，前后给一点容差，
+# 避免连点两次写成两条。
+_BRIEF_POINT_SLACK = 300
+
+
+def _brief_span(b):
+    """一条放电记录的 [开始, 结束] 时刻。
+
+    记录里存的是恢复时刻 at 与时长 sec，开始时刻反推出来。没有时长的
+    记录（手动登记短测）退化成一个点。
+    """
+    try:
+        end = float(int(b.get("at") or 0))
+    except (TypeError, ValueError):
+        return 0.0, 0.0
+    sec = b.get("sec")
+    if isinstance(sec, (int, float)) and sec > 0:
+        return end - float(sec), end
+    return end, end
 
 
 def _brief_same(a, b):
+    """两段放电是否其实是同一次。
+
+    判据是**起止区间有交叉**，而不是「时长相同 + 恢复时刻相近」：双进程并存
+    时各自扫趋势，一端可能少算了开头、另一端少算了结尾，时长和恢复时刻都会
+    有偏差，但两段覆盖的真实时间一定重叠。反过来，两次不同的放电之间隔着市电
+    在线区间，区间不会交叉，所以不会把连续两次短测并成一条。
+    """
     if bool(a.get("manual")) != bool(b.get("manual")):
         return False
-    if a.get("sec") != b.get("sec"):
+    a0, a1 = _brief_span(a)
+    b0, b1 = _brief_span(b)
+    if a0 <= 0 or b0 <= 0:
         return False
-    try:
-        return abs(int(a.get("at") or 0) - int(b.get("at") or 0)) < _BRIEF_DUP_WINDOW
-    except (TypeError, ValueError):
-        return False
+    if a0 == a1 or b0 == b1:            # 有一个是点记录：同一时刻附近算同一条
+        return abs(a1 - b1) <= _BRIEF_POINT_SLACK
+    return a0 < b1 and b0 < a1
 
 
 def _dedup_brief(brief):
@@ -946,12 +970,12 @@ def _dedup_brief(brief):
 
     扫描和写盘没有跨进程的互斥——轮询线程与页面请求并发扫描、或 fnOS
     升级时新旧进程短暂并存，都会把同一段放电写两条（界面上是两行一模一样的
-    「10 分 · 降 49%」）。两个进程算出的恢复时刻可能差几秒，所以按
-    「时长相同 + 时间相近」合并，不做精确相等比较。
+    「10 分 · 降 49%」）。按起止区间交叉判定（见 _brief_same），加载时顺带
+    清洗历史数据里已经存在的重复。
     """
     out = []
     for b in sorted(brief or [], key=_brief_key):
-        if out and _brief_same(b, out[-1]):
+        if any(_brief_same(b, o) for o in out):
             continue
         out.append(b)
     return out

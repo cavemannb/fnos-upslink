@@ -176,4 +176,42 @@ json.dump(state, open(server.MAINT_PATH, "w", encoding="utf-8"))
 m3 = server.maintenance_status(trend(pts))
 check("旧视图重扫也不重复", len(m3["recent"]) == n1, "%d → %d" % (n1, len(m3["recent"])))
 
+print("13. 去重按「起止区间交叉」判定")
+# 时长不同、恢复时刻也不同，但两段覆盖的时间重叠 → 同一次放电（不同进程
+# 扫趋势时首尾各漏掉一点，正是这种形状）
+dup2 = [{"at": NOW - 13000, "sec": 600},
+        {"at": NOW - 12940, "sec": 560}]
+check("区间交叉即同一条", len(server._dedup_brief(dup2)) == 1,
+      str([server._brief_span(b) for b in server._dedup_brief(dup2)]))
+
+# 首尾相接但中间隔着市电在线 → 两次独立的短测，不能合并
+seq = [{"at": NOW - 13000, "sec": 600},
+       {"at": NOW - 12000, "sec": 600}]
+check("不交叉的两段各留一条", len(server._dedup_brief(seq)) == 2,
+      str([server._brief_span(b) for b in server._dedup_brief(seq)]))
+
+# 手动登记没有时长，退化成一个时刻：连点两次（30 秒内）算一条，隔一小时算两条
+man = [{"at": NOW - 600, "sec": None, "manual": True},
+       {"at": NOW - 570, "sec": None, "manual": True}]
+check("手动记录连点两次算一条", len(server._dedup_brief(man)) == 1)
+man2 = [{"at": NOW - 600, "sec": None, "manual": True},
+        {"at": NOW - 4200, "sec": None, "manual": True}]
+check("隔一小时的手动记录是两条", len(server._dedup_brief(man2)) == 2)
+
+# 手动登记与自动记录不互相吞：时间重叠也各留一条
+mixed = [{"at": NOW - 600, "sec": 600},
+         {"at": NOW - 600, "sec": None, "manual": True}]
+check("手动与自动不互相吞", len(server._dedup_brief(mixed)) == 2)
+
+# 端到端：文件里两条重叠记录，扫描后只剩一条
+reset()
+state = server._maint_default()
+state["brief"] = [{"at": NOW - 13000, "sec": 600, "c0": 100, "c1": 51},
+                  {"at": NOW - 12940, "sec": 560, "c0": 100, "c1": 51}]
+state["scan_at"] = NOW - 12000
+json.dump(state, open(server.MAINT_PATH, "w", encoding="utf-8"))
+m = server.maintenance_status(trend(pts))
+check("重叠记录清洗后只剩一条", sum(1 for r in m["recent"] if r["sec"] < 1000) == 1,
+      str([(r["at"], r["sec"]) for r in m["recent"]]))
+
 print("\n全部通过。")

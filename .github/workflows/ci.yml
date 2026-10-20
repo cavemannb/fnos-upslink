@@ -32,7 +32,7 @@ jobs:
       - name: 容量标定状态机（10 组）
         run: python tools/test_calib.py
 
-      - name: 电池保养排期（12 组）
+      - name: 电池保养排期（13 组）
         run: python tools/test_maint.py
 
       - name: 断电来源判定（11 组 29 项）

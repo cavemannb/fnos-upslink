@@ -6,14 +6,49 @@
 <title>UPSLink · UPS 联动</title>
 <style>
 :root{
+  /* 基础色 */
   --bg:#f6f7f9; --panel:#ffffff; --line:#e5e7eb; --text:#1a1c1f; --muted:#6b7280;
   --ok:#1f8a5f; --warn:#b26a00; --bad:#c22d2d; --accent:#2f6bff;
   --charge:#2f6bff; --loadc:#b26a00;
+
+  /* 语义软色：所有半透明底色都走这里，深色模式只换这几个值 */
+  --fill:rgba(127,127,127,.09);
+  --fill-2:rgba(127,127,127,.14);
+  --accent-fill:rgba(47,107,255,.06);
+  --accent-fill-2:rgba(47,107,255,.12);
+  --accent-line:rgba(47,107,255,.24);
+  --accent-ring:rgba(47,107,255,.16);
+  --warn-fill:rgba(178,106,0,.08);
+  --bad-fill:rgba(194,45,45,.07);
+  --ok-fill:rgba(31,138,95,.09);
+
+  /* 圆角阶梯 */
+  --r-xs:6px; --r-sm:8px; --r-md:10px; --r-lg:12px; --r-xl:14px; --r-pill:999px;
+
+  /* 字号阶梯 */
+  --fs-2xs:11px; --fs-xs:12px; --fs-sm:12.5px; --fs-md:13px;
+
+  /* 数字阶梯 */
+  --num-xl:24px; --num-lg:22px; --num-md:18px;
+
+  /* 卡片节奏：所有区卡统一内边距与间距 */
+  --pad-card:16px 18px;
+  --gap-card:12px;
+  --focus-ring:0 0 0 3px var(--accent-ring);
 }
 @media (prefers-color-scheme: dark){
   :root{ --bg:#16181c; --panel:#1e2126; --line:#2e3238; --text:#e8eaed; --muted:#9aa1ac;
          --ok:#4cc38a; --warn:#e0a84c; --bad:#f07c7c; --accent:#6c9bff;
-         --charge:#6c9bff; --loadc:#e0a84c; }
+         --charge:#6c9bff; --loadc:#e0a84c;
+         --fill:rgba(255,255,255,.07);
+         --fill-2:rgba(255,255,255,.12);
+         --accent-fill:rgba(108,155,255,.11);
+         --accent-fill-2:rgba(108,155,255,.20);
+         --accent-line:rgba(108,155,255,.30);
+         --accent-ring:rgba(108,155,255,.22);
+         --warn-fill:rgba(224,168,76,.14);
+         --bad-fill:rgba(240,124,124,.14);
+         --ok-fill:rgba(76,195,138,.14); }
 }
 *{box-sizing:border-box}
 body{margin:0;background:var(--bg);color:var(--text);
@@ -21,105 +56,237 @@ body{margin:0;background:var(--bg);color:var(--text);
 .wrap{max-width:960px;margin:0 auto;padding:26px 20px 44px}
 header{display:flex;align-items:flex-start;gap:12px;margin-bottom:14px}
 h1{font-size:16px;font-weight:600;margin:0;letter-spacing:-.2px}
-.ver{color:var(--muted);font-size:12px;margin-top:2px}
-.poll{margin-left:auto;text-align:right;font-size:12px;color:var(--muted);line-height:1.5}
+.ver{color:var(--muted);font-size:var(--fs-xs);margin-top:2px}
+.poll{margin-left:auto;text-align:right;font-size:var(--fs-xs);color:var(--muted);line-height:1.5}
 .poll b{font-weight:400;color:var(--text);font-variant-numeric:tabular-nums}
 
-.panel{background:var(--panel);border:1px solid var(--line);border-radius:12px}
-.banner{margin:0 0 12px;padding:11px 16px;border-radius:12px;border:1px solid var(--line);
-  background:var(--panel);display:none;font-size:13px}
+.panel{background:var(--panel);border:1px solid var(--line);border-radius:var(--r-lg)}
+.banner{margin:0 0 var(--gap-card);padding:11px 18px;border-radius:var(--r-lg);border:1px solid var(--line);
+  background:var(--panel);display:none;font-size:var(--fs-md)}
 .banner.show{display:block;border-color:var(--warn)}
 .banner b{color:var(--warn)}
 .banner button{margin-left:8px}
 
-.band{display:flex;align-items:center;gap:18px;flex-wrap:wrap;padding:16px 20px;margin-bottom:12px}
-.band-l{display:flex;align-items:center;gap:11px;min-width:190px}
+/* 总览卡：状态 + 三个数字 + 一行参数胶囊 */
+.ov{margin-bottom:12px;overflow:hidden}
+.ov-hd{display:flex;align-items:center;gap:18px;flex-wrap:wrap;padding:16px 18px 10px}
+.ov-st{display:flex;align-items:center;gap:11px;min-width:190px}
+.ov-nums{margin-left:auto;display:grid;grid-template-columns:repeat(3,auto);gap:4px 36px}
+.ov-nums .k{font-size:var(--fs-2xs);color:var(--muted);margin-bottom:1px}
+.ov-nums .n{font-size:var(--num-lg);font-weight:600;letter-spacing:-.5px;font-variant-numeric:tabular-nums;line-height:1.25}
+.ov-nums .n i{font-style:normal;font-size:var(--fs-xs);font-weight:400;color:var(--muted);margin-left:2px}
+.ov-chips{display:flex;flex-wrap:wrap;gap:6px;padding:0 18px 14px}
+.chip{display:inline-flex;align-items:center;gap:5px;padding:2px 9px;border-radius:var(--r-pill);
+  background:var(--fill);font-size:var(--fs-2xs);line-height:1.65;color:var(--muted);
+  white-space:nowrap;font-variant-numeric:tabular-nums}
+.chip b{font-weight:600;color:var(--text)}
+.chip.acc{background:var(--accent-fill-2);color:var(--accent)}
+.chip.acc b{color:inherit}
+.chip.warn{background:var(--warn-fill);color:var(--warn)}
+.chip.warn b{color:inherit}
+.chip.bad{background:var(--bad-fill);color:var(--bad)}
+.chip.bad b{color:inherit}
+.volt{font-size:var(--fs-xs);font-weight:400;color:var(--muted);margin-left:8px;
+  font-variant-numeric:tabular-nums;white-space:nowrap}
+.ov-nums .sub{font-size:var(--fs-2xs);color:var(--muted);margin-top:1px;white-space:nowrap;
+  overflow:hidden;text-overflow:ellipsis;font-variant-numeric:tabular-nums}
+.st .volt:empty{display:none}
 .dot{width:9px;height:9px;border-radius:50%;background:var(--muted);flex:0 0 9px}
 .dot.on{background:var(--ok)} .dot.batt{background:var(--warn)}
 .dot.off{background:var(--bad)}
 .st{font-size:19px;font-weight:600;letter-spacing:-.3px;line-height:1.3}
-.st-sub{font-size:12px;color:var(--muted);font-variant-numeric:tabular-nums}
-.band-r{margin-left:auto;display:flex;gap:26px;flex-wrap:wrap}
-.band-r .k{font-size:11px;color:var(--muted);margin-bottom:1px}
-.band-r .n{font-size:22px;font-weight:600;letter-spacing:-.5px;font-variant-numeric:tabular-nums;line-height:1.25}
-.band-r .n i{font-style:normal;font-size:12px;font-weight:400;color:var(--muted);margin-left:2px}
-.band-r .n.sm{font-size:15px;letter-spacing:0}
+.st-sub{font-size:var(--fs-xs);color:var(--muted);font-variant-numeric:tabular-nums}
+/* 上次断电：比普通副信息深一档、数字加粗，但不抢主状态 */
+.st-out{color:var(--text);opacity:.82;white-space:nowrap}
+.st-out i{font-style:normal;color:var(--muted);opacity:.7;margin:0 7px}
+.st-out b{font-weight:600}
 
-.cards3{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:12px;margin-bottom:12px}
-.card{padding:13px 16px}
-.card .hd{font-size:11px;color:var(--muted);margin-bottom:5px}
-.card .big{font-size:24px;font-weight:600;letter-spacing:-.6px;line-height:1.2;margin-bottom:7px;
+/* 电池卡：桌面左右两栏，窄屏回落单列 */
+.card{padding:var(--pad-card)}
+.card .hd{font-size:var(--fs-xs);font-weight:600;color:var(--muted);margin-bottom:6px}
+.card .big{font-size:var(--num-xl);font-weight:600;letter-spacing:-.6px;line-height:1.2;margin-bottom:7px;
   font-variant-numeric:tabular-nums}
-.card .big i{font-style:normal;font-size:12px;font-weight:400;color:var(--muted);margin-left:3px}
-.kv{display:flex;justify-content:space-between;gap:10px;font-size:12.5px;padding:1.5px 0}
+.card .big i{font-style:normal;font-size:var(--fs-xs);font-weight:400;color:var(--muted);margin-left:3px}
+.card.bat{padding:var(--pad-card);margin-bottom:var(--gap-card)}
+.bat .bt{display:grid;grid-template-columns:minmax(0,.85fr) minmax(0,1.5fr);gap:22px;align-items:start}
+.bat .bt-r{min-width:0}
+.bat .bt-r .bhealth:first-child{margin-top:0;padding-top:0;border-top:0}
+.kv{display:flex;justify-content:space-between;gap:10px;font-size:var(--fs-sm);padding:2px 0;line-height:1.6}
 .kv b{font-weight:400;color:var(--muted);white-space:nowrap}
 .kv span{text-align:right;color:var(--text);font-variant-numeric:tabular-nums}
 .bhealth{margin-top:8px;padding-top:8px;border-top:1px dashed var(--line)}
-.bhealth .bh-hd{display:flex;align-items:center;gap:6px;font-size:12px;font-weight:600}
+.bhealth .bh-hd{display:flex;align-items:center;gap:6px;font-size:var(--fs-xs);font-weight:600}
 .bhealth .bh-hd i{width:6px;height:6px;border-radius:50%;background:var(--ok);flex:0 0 auto}
 .bhealth.warn .bh-hd i{background:var(--warn)}
 .bhealth.due .bh-hd i{background:var(--bad)}
 .bhealth.unknown .bh-hd i{background:var(--muted)}
-.bhealth .bh-msg{font-size:12px;color:var(--muted);margin-top:3px;line-height:1.5}
-.bhealth .bh-nums{display:flex;gap:12px;margin-top:5px;font-size:12px;color:var(--muted);flex-wrap:wrap}
+.bhealth .bh-msg{font-size:var(--fs-xs);color:var(--muted);margin-top:3px;line-height:1.55}
+.bhealth .bh-nums{display:flex;gap:12px;margin-top:5px;font-size:var(--fs-xs);color:var(--muted);flex-wrap:wrap}
 .bhealth .bh-nums b{color:var(--text);font-weight:600;font-variant-numeric:tabular-nums}
+.bcal{margin-top:8px;font-size:var(--fs-xs);color:var(--muted);line-height:1.55}
+.bcal.on{color:var(--text)}
+.bcal b{color:var(--text);font-weight:600;font-variant-numeric:tabular-nums}
+.bcal .lb{border:0;background:transparent;color:var(--accent);font:inherit;font-size:var(--fs-xs);
+  padding:0;cursor:pointer}
+.bcal .lb:hover{text-decoration:underline}
+.bcal .bar{height:3px;border-radius:2px;background:var(--line);margin:5px 0 4px;overflow:hidden}
+.bcal .bar i{display:block;height:100%;background:var(--accent);transition:width .4s}
+.bcal .row{display:flex;align-items:baseline;gap:8px;flex-wrap:wrap}
+.bcal .row .sp{margin-left:auto}
+.bcal .mini{font-size:var(--fs-2xs);color:var(--muted)}
+.bcal:empty{display:none}
+.bmaint{margin-top:8px;padding-top:8px;border-top:1px dashed var(--line);font-size:var(--fs-xs);color:var(--muted)}
+/* 整行做成胶囊按钮：淡蓝底 + 描边 + 圆形箭头，一眼看出能点 */
+.bmaint .mrow{display:flex;align-items:center;gap:8px;width:100%;min-height:36px;padding:6px 10px;
+  border:1px solid var(--accent-line);border-radius:var(--r-sm);background:var(--accent-fill);
+  font:inherit;font-size:var(--fs-xs);color:var(--text);cursor:pointer;text-align:left;
+  -webkit-tap-highlight-color:transparent;
+  transition:background .15s,border-color .15s,box-shadow .15s,color .15s}
+.bmaint .mrow:hover,.bmaint .mrow:focus-visible{background:var(--accent-fill-2);border-color:var(--accent);
+  color:var(--accent);box-shadow:var(--focus-ring);outline:none}
+.bmaint .mrow:active{background:var(--accent-fill-2)}
+.bmaint .mrow i{width:6px;height:6px;border-radius:50%;background:var(--ok);flex:0 0 auto}
+.bmaint .mrow > span:nth-child(2){flex:0 0 auto;font-weight:600;letter-spacing:-.1px}
+.bmaint.warn .mrow i,.bmaint.due .mrow i{background:var(--warn)}
+.bmaint .mrow .sp{margin-left:auto;color:var(--muted);font-size:var(--fs-2xs);font-variant-numeric:tabular-nums;
+  white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.bmaint .mrow .chev{flex:0 0 auto;display:inline-flex;align-items:center;justify-content:center;
+  width:18px;height:18px;border-radius:50%;background:var(--accent-fill-2);color:var(--accent);
+  font-size:12px;line-height:1;font-weight:700;padding-left:1px}
+.bmaint .mrow:hover .chev,.bmaint .mrow:focus-visible .chev{background:var(--accent);color:#fff}
+.bmaint .msg{margin-top:6px;line-height:1.55}
+.bmaint.live .mrow{border-color:var(--accent);background:var(--accent-fill-2)}
+.bmaint b{color:var(--text);font-weight:600;font-variant-numeric:tabular-nums}
+.bmaint.live .mrow i{background:var(--accent);animation:bpulse 1.8s ease-in-out infinite}
+/* 逾期提醒：整块上色，第一句（事实）加粗，避免和普通说明文字混在一起 */
+.alert{margin-top:7px;padding:7px 10px 8px;border-radius:var(--r-sm);border-left:3px solid var(--warn);
+  background:var(--warn-fill);line-height:1.55}
+.alert b{display:block;font-weight:600;color:var(--warn);font-size:var(--fs-sm)}
+.alert span{display:block;color:var(--muted);font-size:var(--fs-xs);margin-top:2px}
+.alert.due{border-left-color:var(--bad);background:var(--bad-fill)}
+.alert.due b{color:var(--bad)}
+.sheet-bd .alert{margin:0 0 11px}
+@keyframes bpulse{0%,100%{opacity:1}50%{opacity:.35}}
+.rec{margin-top:10px;font-size:var(--fs-xs);color:var(--muted)}
+.rec b{display:flex;align-items:center;gap:6px;color:var(--text);font-weight:600;margin-bottom:3px}
+.rec .rl{font-variant-numeric:tabular-nums;line-height:1.7}
 
-.tr-hd{display:flex;align-items:center;gap:12px;flex-wrap:wrap;padding:13px 16px 6px}
-.tr-hd .ttl{font-size:13px;font-weight:600}
-.legend{display:flex;gap:12px;font-size:12px;color:var(--muted);margin-left:2px}
+/* ⓘ 说明按钮：点击在该行下方展开说明 */
+.info{display:inline-flex;align-items:center;justify-content:center;
+  width:17px;height:17px;border:0;border-radius:50%;background:var(--fill);color:var(--muted);
+  font:inherit;font-size:10px;cursor:pointer;padding:0;flex:0 0 17px;vertical-align:1px;
+  transition:background .15s,color .15s}
+.info i{font-style:normal;line-height:1;transform:translateY(-.5px)}
+.info:hover,.info.open{background:var(--accent);color:#fff}
+.info:focus-visible{outline:none;box-shadow:var(--focus-ring);background:var(--accent);color:#fff}
+.itip{margin:7px 0 3px;padding:8px 11px;border-radius:var(--r-md);background:var(--fill);
+  font-size:var(--fs-xs);font-weight:400;line-height:1.65;color:var(--muted);text-align:left}
+.itip b{display:block;color:var(--text);margin-bottom:2px}
+
+/* 弹窗：桌面居中，窄屏贴底成抽屉 */
+.sheet-wrap{position:fixed;inset:0;z-index:60;display:none;align-items:center;justify-content:center;padding:24px}
+.sheet-wrap.on{display:flex}
+.sheet-mask{position:absolute;inset:0;background:rgba(0,0,0,.4);animation:fadeIn .16s ease-out}
+.sheet{position:relative;width:100%;max-width:440px;max-height:86vh;display:flex;flex-direction:column;
+  background:var(--panel);border:1px solid var(--line);border-radius:var(--r-xl);
+  box-shadow:0 20px 60px rgba(0,0,0,.3);animation:sheetIn .18s ease-out}
+.sheet-hd{display:flex;align-items:center;gap:10px;padding:15px 16px 4px}
+.sheet-hd b{font-size:15px;font-weight:600;letter-spacing:-.2px}
+.sheet-x{margin-left:auto;border:0;background:transparent;color:var(--muted);font-size:14px;
+  cursor:pointer;padding:4px 6px;line-height:1;border-radius:var(--r-xs)}
+.sheet-x:hover{color:var(--text)}
+.sheet-x:focus-visible{outline:none;box-shadow:var(--focus-ring);color:var(--text)}
+.sheet-bd{padding:4px 18px 2px;overflow:auto;font-size:var(--fs-md);color:var(--muted);line-height:1.65}
+.sheet-bd b{color:var(--text);font-weight:600}
+.sheet-bd p{margin:0 0 9px}
+.sheet-bd p:last-child{margin-bottom:0}
+.sheet-bd .kv2{padding:8px 0;border-bottom:1px dashed var(--line);font-size:var(--fs-sm)}
+.sheet-bd .kv2 .kv2-m{display:flex;justify-content:space-between;gap:12px}
+.sheet-bd .kv2:last-child{border-bottom:0}
+.sheet-bd .kv2 span{color:var(--muted);font-variant-numeric:tabular-nums}
+.sheet-bd .why{margin:10px 0 4px;padding:10px 12px;border-radius:var(--r-md);
+  background:var(--fill);font-size:var(--fs-sm);line-height:1.7}
+.sheet-ft{display:flex;gap:8px;padding:14px 18px 16px;flex-wrap:wrap}
+.sheet-ft button{flex:1 1 auto;min-width:104px;padding:9px 14px;border-radius:var(--r-sm);border:1px solid var(--line);
+  background:transparent;color:var(--text);font:inherit;font-size:var(--fs-md);cursor:pointer}
+.sheet-ft button:hover{border-color:var(--accent);color:var(--accent);background:var(--accent-fill)}
+.sheet-ft button.primary{background:var(--accent);border-color:var(--accent);color:#fff}
+.sheet-ft button.primary:hover{color:#fff;opacity:.92}
+@keyframes sheetIn{from{opacity:0;transform:translateY(10px) scale(.985)}to{opacity:1;transform:none}}
+@keyframes sheetUp{from{transform:translateY(36px)}to{transform:none}}
+@keyframes fadeIn{from{opacity:0}to{opacity:1}}
+@media (max-width:640px){
+  .sheet-wrap{align-items:flex-end;padding:0}
+  .sheet{max-width:none;max-height:88vh;border-radius:16px 16px 0 0;animation:sheetUp .22s cubic-bezier(.2,.8,.3,1)}
+  .sheet-ft{padding-bottom:calc(16px + env(safe-area-inset-bottom,0px))}
+  .sheet-ft button{padding:11px 14px}
+}
+
+.tr-hd{display:flex;align-items:center;gap:12px;flex-wrap:wrap;padding:16px 18px 8px}
+.tr-hd .ttl{font-size:var(--fs-md);font-weight:600}
+.legend{display:flex;gap:12px;font-size:var(--fs-xs);color:var(--muted);margin-left:2px}
 .legend i{display:inline-block;width:11px;height:2px;vertical-align:middle;margin-right:5px}
-.chips{margin-left:auto;display:flex;gap:6px}
-.chip{border:1px solid var(--line);background:transparent;color:var(--muted);border-radius:7px;
-  padding:2px 9px;font:inherit;font-size:12px;cursor:pointer;line-height:1.7}
-.chip:hover{border-color:var(--muted)}
-.chip.on{color:var(--text);border-color:var(--accent);background:var(--bg)}
+.segs{margin-left:auto;display:flex;gap:6px}
+.seg{border:1px solid var(--line);background:transparent;color:var(--muted);border-radius:var(--r-sm);
+  padding:3px 10px;font:inherit;font-size:var(--fs-xs);line-height:1.6;cursor:pointer;
+  transition:border-color .15s,color .15s,background .15s}
+.seg:hover{border-color:var(--muted);color:var(--text)}
+.seg.on{color:var(--accent);border-color:var(--accent);background:var(--accent-fill)}
+.seg:focus-visible{outline:none;box-shadow:var(--focus-ring);border-color:var(--accent)}
 .chart{position:relative;padding:0 6px 8px}
 .chart svg{display:block;width:100%}
 .tip{position:absolute;top:2px;left:0;transform:translateX(-50%);display:none;white-space:nowrap;
-  background:var(--panel);border:1px solid var(--line);border-radius:8px;padding:5px 9px;
-  font-size:12px;line-height:1.55;pointer-events:none;z-index:4;font-variant-numeric:tabular-nums}
+  background:var(--panel);border:1px solid var(--line);border-radius:var(--r-sm);padding:5px 9px;
+  font-size:var(--fs-xs);line-height:1.55;pointer-events:none;z-index:4;font-variant-numeric:tabular-nums}
 .tip b{font-weight:600}
 .tip .m{color:var(--muted)}
 
-.stats4{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:12px;margin:12px 0}
-.stat{background:var(--panel);border:1px solid var(--line);border-radius:10px;padding:10px 13px}
-.stat .k{font-size:11px;color:var(--muted)}
-.stat .n{font-size:20px;font-weight:600;letter-spacing:-.4px;font-variant-numeric:tabular-nums}
-.stat .n small{font-size:11px;font-weight:400;color:var(--muted);margin-left:3px}
+/* 区间统计：跟着图表的筛选走，所以放进图表卡里 */
+.stats4{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:16px;
+  margin:0;padding:12px 18px 14px;border-top:1px dashed var(--line)}
+.stat{background:transparent;border:0;border-radius:0;padding:0;min-width:0}
+.stat .k{font-size:var(--fs-2xs);color:var(--muted);margin-bottom:1px;white-space:nowrap;overflow:hidden;
+  text-overflow:ellipsis}
+.stat .n{font-size:var(--num-md);font-weight:600;letter-spacing:-.3px;font-variant-numeric:tabular-nums;line-height:1.3}
+.stat .n small{font-size:var(--fs-2xs);font-weight:400;color:var(--muted);margin-left:3px}
+.stat .n.sm{font-size:var(--fs-md);letter-spacing:0;line-height:1.45}
 
-details.sec{background:var(--panel);border:1px solid var(--line);border-radius:12px;margin-top:12px}
-details.sec summary{list-style:none;cursor:pointer;padding:12px 16px;display:flex;align-items:center;
-  gap:10px;font-size:13px;font-weight:600;user-select:none}
+details.sec{background:var(--panel);border:1px solid var(--line);border-radius:var(--r-lg);margin-top:var(--gap-card)}
+details.sec summary{list-style:none;cursor:pointer;padding:13px 18px;display:flex;align-items:center;
+  gap:10px;font-size:var(--fs-md);font-weight:600;user-select:none}
 details.sec summary::-webkit-details-marker{display:none}
 details.sec summary:hover{color:var(--accent)}
 .caret{width:0;height:0;border-left:5px solid var(--muted);border-top:4px solid transparent;
   border-bottom:4px solid transparent;transition:transform .15s;flex:0 0 5px}
 details[open] .caret{transform:rotate(90deg)}
-.sum{margin-left:auto;font-weight:400;font-size:12px;color:var(--muted);text-align:right;
+.sum{margin-left:auto;font-weight:400;font-size:var(--fs-xs);color:var(--muted);text-align:right;
   overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:60%}
 .body{padding:2px 16px 16px;border-top:1px solid var(--line);margin-top:0}
 .body>.first{margin-top:12px}
-h2{font-size:12px;font-weight:600;margin:14px 0 8px;color:var(--muted);letter-spacing:.02em}
+h2{font-size:var(--fs-xs);font-weight:600;margin:14px 0 8px;color:var(--muted);letter-spacing:.02em}
 h2:first-child{margin-top:12px}
 
 .row{display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:12px;margin-bottom:12px}
-label{display:block;font-size:12px;color:var(--muted);margin-bottom:5px}
+label{display:block;font-size:var(--fs-xs);color:var(--muted);margin-bottom:5px}
 input[type=text],input[type=password],input[type=number]{
-  width:100%;padding:8px 10px;border:1px solid var(--line);border-radius:8px;
-  background:var(--bg);color:var(--text);font:inherit;font-size:13px}
+  width:100%;padding:8px 10px;border:1px solid var(--line);border-radius:var(--r-sm);
+  background:var(--bg);color:var(--text);font:inherit;font-size:var(--fs-md)}
 input:focus{outline:none;border-color:var(--accent)}
-.check{display:flex;align-items:flex-start;gap:9px;margin:2px 0 10px;font-size:13px}
+.check{display:flex;align-items:flex-start;gap:9px;margin:2px 0 10px;font-size:var(--fs-md)}
 .check input{margin-top:3px}
-.hint{color:var(--muted);font-size:12px;margin:0 0 12px}
+.hint{color:var(--muted);font-size:var(--fs-xs);margin:0 0 12px;line-height:1.6}
 .actions{display:flex;gap:10px;flex-wrap:wrap;align-items:center;padding:4px 0 2px}
-button{padding:7px 15px;border-radius:8px;border:1px solid var(--line);background:var(--bg);
-  color:var(--text);font:inherit;font-size:13px;cursor:pointer}
-button:hover{border-color:var(--accent)}
+button{padding:7px 15px;border-radius:var(--r-sm);border:1px solid var(--line);background:var(--bg);
+  color:var(--text);font:inherit;font-size:var(--fs-md);cursor:pointer;
+  transition:border-color .15s,color .15s,background .15s,box-shadow .15s}
+button:hover{border-color:var(--accent);color:var(--accent)}
 button.primary{background:var(--accent);border-color:var(--accent);color:#fff}
+button.primary:hover{opacity:.92;color:#fff}
+button:focus-visible{outline:none;border-color:var(--accent);box-shadow:var(--focus-ring)}
 button:disabled{opacity:.5;cursor:default}
-#msg{font-size:12px;min-height:18px;padding-top:8px}
+#msg{font-size:var(--fs-xs);min-height:18px;padding-top:8px}
 
-.chk{display:flex;gap:9px;padding:6px 0;border-bottom:1px dashed var(--line);font-size:12.5px}
+.chk{display:flex;gap:9px;padding:6px 0;border-bottom:1px dashed var(--line);font-size:var(--fs-sm)}
 .chk:last-child{border-bottom:0}
 .chk .s{flex:0 0 14px;font-weight:700}
 .chk.ok .s{color:var(--ok)} .chk.warn .s{color:var(--warn)} .chk.err .s{color:var(--bad)}
@@ -129,24 +296,30 @@ button:disabled{opacity:.5;cursor:default}
 .vars div{display:flex;gap:14px;padding:2px 0;border-bottom:1px dashed var(--line)}
 .vars b{font-weight:400;color:var(--muted);flex:0 0 46%;word-break:break-all}
 .vars span{text-align:right;flex:1;word-break:break-all}
-.mini{font-size:12px;color:var(--muted)}
+.mini{font-size:var(--fs-xs);color:var(--muted)}
 
-.ev-hd{display:flex;align-items:center;gap:6px;flex-wrap:wrap;padding:13px 16px 8px}
-.ev-hd .ttl{font-size:13px;font-weight:600;margin-right:6px}
-ul.events{list-style:none;margin:0;padding:0 16px 14px;max-height:300px;overflow:auto}
-ul.events li{display:flex;gap:10px;padding:5px 0;border-bottom:1px dashed var(--line);font-size:12.5px}
+.ev-hd{display:flex;align-items:center;gap:6px;flex-wrap:wrap;padding:16px 18px 8px}
+.ev-hd .ttl{font-size:var(--fs-md);font-weight:600;margin-right:6px}
+ul.events{list-style:none;margin:0;padding:0 18px 14px;max-height:300px;overflow:auto}
+ul.events li{display:flex;gap:10px;padding:6px 0;border-bottom:1px dashed var(--line);font-size:var(--fs-sm)}
 ul.events li:last-child{border-bottom:0}
 ul.events time{color:var(--muted);flex:0 0 74px;font-variant-numeric:tabular-nums}
-.tag{flex:0 0 34px;color:var(--muted)}
-.tag.shutdown,.tag.error,.tag.offline{color:var(--bad)}
-.tag.onbatt{color:var(--warn)}
-.tag.online,.tag.test,.tag.repair{color:var(--ok)}
-footer{margin-top:16px;color:var(--muted);font-size:11.5px;line-height:1.7}
+.tag{flex:0 0 auto;min-width:42px;text-align:center;font-size:var(--fs-2xs);line-height:1.7;
+  padding:0 6px;border-radius:var(--r-pill);background:var(--fill);color:var(--muted);
+  align-self:flex-start;margin-top:1px}
+.tag.shutdown,.tag.error,.tag.offline{background:var(--bad-fill);color:var(--bad)}
+.tag.onbatt{background:var(--warn-fill);color:var(--warn)}
+.tag.online,.tag.test,.tag.repair{background:var(--ok-fill);color:var(--ok)}
+footer{margin-top:16px;color:var(--muted);font-size:var(--fs-2xs);line-height:1.7}
 
 @media (max-width:780px){
-  .cards3{grid-template-columns:1fr}
-  .stats4{grid-template-columns:repeat(2,minmax(0,1fr))}
-  .band-r{gap:18px;width:100%;margin-left:0}
+  .ov-hd{padding:14px 16px 8px;gap:12px}
+  .ov-nums{grid-template-columns:repeat(3,1fr);gap:4px 12px;width:100%;margin-left:0}
+  .ov-chips{padding:0 16px 13px;gap:5px}
+  .chip{font-size:var(--fs-2xs);padding:2px 8px}
+  .bat .bt{grid-template-columns:1fr;gap:0}
+  .bat .bt-r .bhealth{margin-top:9px;padding-top:9px;border-top:1px dashed var(--line)}
+  .stats4{grid-template-columns:repeat(2,minmax(0,1fr));gap:12px}
   .sum{max-width:48%}
 }
 </style>
@@ -163,38 +336,38 @@ footer{margin-top:16px;color:var(--muted);font-size:11.5px;line-height:1.7}
 
   <div class="banner" id="banner"></div>
 
-  <div class="panel band">
-    <div class="band-l">
-      <span class="dot" id="dot"></span>
-      <div>
-        <div class="st" id="stText">—</div>
-        <div class="st-sub" id="stSub">等待首次轮询</div>
+  <!-- 总览卡：状态 + 电压 + 上次断电 + 三个核心数字 + 一行参数胶囊 -->
+  <div class="panel ov">
+    <div class="ov-hd">
+      <div class="ov-st">
+        <span class="dot" id="dot"></span>
+        <div>
+          <div class="st"><span id="stText">—</span><span class="volt" id="stVolt"></span></div>
+          <div class="st-sub"><span id="stSub">等待首次轮询</span><span class="st-out" id="stOut"></span></div>
+        </div>
+      </div>
+      <div class="ov-nums">
+        <div><div class="k">电量</div><div class="n"><span id="mCharge">—</span><i>%</i></div></div>
+        <div><div class="k">续航</div><div class="n"><span id="mRuntime">—</span></div></div>
+        <div><div class="k">负载</div><div class="n"><span id="mLoad">—</span><i>%</i></div>
+          <div class="sub" id="mLoadSub"></div></div>
       </div>
     </div>
-    <div class="band-r">
-      <div><div class="k">电量</div><div class="n"><span id="mCharge">—</span><i>%</i></div></div>
-      <div><div class="k">续航</div><div class="n"><span id="mRuntime">—</span></div></div>
-      <div><div class="k">负载</div><div class="n"><span id="mLoad">—</span><i>%</i></div></div>
-      <div><div class="k">断电时</div><div class="n sm" id="mPolicy">—</div></div>
-    </div>
+    <div class="ov-chips" id="ovChips"></div>
   </div>
 
-  <div class="cards3">
-    <div class="panel card">
-      <div class="hd">电池</div>
-      <div class="big" id="cCharge">—</div>
-      <div id="cBatRows"></div>
-      <div id="cBatHealth" class="bhealth"></div>
-    </div>
-    <div class="panel card">
-      <div class="hd">负载</div>
-      <div class="big" id="cLoad">—</div>
-      <div id="cLoadRows"></div>
-    </div>
-    <div class="panel card">
-      <div class="hd">市电</div>
-      <div class="big" id="cVolt">—</div>
-      <div id="cMainsRows"></div>
+  <div class="panel card bat">
+    <div class="bt">
+      <div class="bt-l">
+        <div class="hd">电池</div>
+        <div class="big" id="cCharge">—</div>
+        <div id="cBatRows"></div>
+      </div>
+      <div class="bt-r">
+        <div id="cBatHealth" class="bhealth"></div>
+        <div id="cMaint" class="bmaint"></div>
+        <div id="cCalib" class="bcal"></div>
+      </div>
     </div>
   </div>
 
@@ -205,20 +378,19 @@ footer{margin-top:16px;color:var(--muted);font-size:11.5px;line-height:1.7}
         <span><i style="background:var(--charge)"></i>电量</span>
         <span><i style="background:var(--loadc)"></i>负载</span>
       </span>
-      <div class="chips" id="rangeChips">
-        <button class="chip" data-range="1h">1 时</button>
-        <button class="chip" data-range="6h">6 时</button>
-        <button class="chip on" data-range="24h">24 时</button>
-        <button class="chip" data-range="7d">7 天</button>
+      <div class="segs" id="rangeChips">
+        <button class="seg" data-range="1h">1 时</button>
+        <button class="seg" data-range="6h">6 时</button>
+        <button class="seg on" data-range="24h">24 时</button>
+        <button class="seg" data-range="7d">7 天</button>
       </div>
     </div>
     <div class="chart" id="chartBox">
       <svg id="chart" height="200"></svg>
       <div class="tip" id="tip"></div>
     </div>
+    <div class="stats4" id="stats"></div>
   </div>
-
-  <div class="stats4" id="stats"></div>
 
   <details class="sec">
     <summary><span class="caret"></span>设备与驱动<span class="sum" id="devSum">—</span></summary>
@@ -288,11 +460,11 @@ footer{margin-top:16px;color:var(--muted);font-size:11.5px;line-height:1.7}
   <div class="panel" style="margin-top:12px">
     <div class="ev-hd">
       <span class="ttl">事件</span>
-      <button class="chip on" data-ev="all">全部</button>
-      <button class="chip" data-ev="power">断电</button>
-      <button class="chip" data-ev="status">状态</button>
-      <button class="chip" data-ev="op">操作</button>
-      <button class="chip" data-ev="err">错误</button>
+      <button class="seg on" data-ev="all">全部</button>
+      <button class="seg" data-ev="power">断电</button>
+      <button class="seg" data-ev="status">状态</button>
+      <button class="seg" data-ev="op">操作</button>
+      <button class="seg" data-ev="err">错误</button>
     </div>
     <ul class="events" id="events"></ul>
   </div>
@@ -302,8 +474,47 @@ footer{margin-top:16px;color:var(--muted);font-size:11.5px;line-height:1.7}
   </footer>
 </div>
 
+<div class="sheet-wrap" id="sheetWrap">
+  <div class="sheet-mask" data-sheet-close="1"></div>
+  <div class="sheet" role="dialog" aria-modal="true" aria-labelledby="sheetTitle">
+    <div class="sheet-hd">
+      <b id="sheetTitle"></b>
+      <button class="sheet-x" data-sheet-close="1" aria-label="关闭">✕</button>
+    </div>
+    <div class="sheet-bd" id="sheetBody"></div>
+    <div class="sheet-ft" id="sheetFoot"></div>
+  </div>
+</div>
+
 <script>
 var state = null;
+// 短测引导：不再要求用户先点按钮。任何一次放电都会让卡片自动进入计时，
+// 这里只记「用户主动点过开始」和「页面已经看到过 OB」两件事，并存在
+// sessionStorage 里，刷新页面不丢。真正的记录靠后端统计趋势，不靠这个变量。
+var BRIEF = loadBrief();
+
+function loadBrief(){
+  var d = {armedAt: 0, seenAt: 0, target: 90};
+  try {
+    var raw = sessionStorage.getItem('upslink.brief');
+    if (raw){
+      var o = JSON.parse(raw) || {};
+      if (isFinite(o.armedAt)) d.armedAt = +o.armedAt || 0;
+      if (isFinite(o.seenAt)) d.seenAt = +o.seenAt || 0;
+      if (isFinite(o.target) && o.target > 0) d.target = +o.target;
+    }
+  } catch (e) {}
+  return d;
+}
+
+function saveBrief(){
+  try { sessionStorage.setItem('upslink.brief', JSON.stringify(BRIEF)); } catch (e) {}
+}
+
+function resetBrief(){
+  BRIEF = {armedAt: 0, seenAt: 0, target: 90};
+  try { sessionStorage.removeItem('upslink.brief'); } catch (e) {}
+}
 
 var STATUS_ZH = {
   OL:'市电在线', OB:'电池供电', LB:'低电量', HB:'电量低', RB:'需更换电池',
@@ -313,13 +524,14 @@ var STATUS_ZH = {
 };
 var KIND_ZH = {
   start:'启动', config:'配置', test:'测试', drill:'演练', status:'状态',
-  onbatt:'断电', online:'来电', shutdown:'关机', repair:'修复', error:'错误', offline:'离线'
+  onbatt:'断电', online:'来电', shutdown:'关机', repair:'修复', error:'错误', offline:'离线',
+  calibrate:'标定', maint:'保养'
 };
 var EV_FILTER = {
   all: null,
   power: ['onbatt','online','shutdown','offline'],
   status: ['status'],
-  op: ['config','test','drill','repair','start'],
+  op: ['config','test','drill','repair','start','calibrate','maint'],
   err: ['error']
 };
 
@@ -404,11 +616,35 @@ function render(s){
   else { dot.classList.add('on'); st = '市电在线'; }
   $('stText').textContent = st;
 
+  // 原码（如 OL CHRG）是翻译的来源，两者并列展示是重复——
+  // 副行只放「主状态之外」的附加状态中文；原码收进悬停提示供排障。
+  var raw = s.status.raw || '';
+  $('stText').title = raw;
+
   var sub = [];
-  if (s.status.raw) sub.push(s.status.raw);
+  var extra = statusZh(raw).split(' · ');
+  for (var i = 0; i < extra.length; i++){
+    if (extra[i] && extra[i] !== st) sub.push(extra[i]);
+  }
   if (s.status.onbatt) sub.push('已持续 ' + fmtShort(s.onbatt_elapsed));
   else if (s.online_for) sub.push('已稳定 ' + fmtShort(s.online_for));
   $('stSub').textContent = sub.join(' · ') || '等待数据';
+
+  // 有记录以来最近一次断电（不受下方时间跨度筛选影响）：
+  // 单独一段、颜色深一档，时间和时长加粗，扫一眼就能读到。
+  var lo = s.last_outage;
+  if (lo && isNum(lo.at)){
+    $('stOut').innerHTML = '<i>·</i>上次断电 <b>' +
+      esc(lo.ongoing ? '进行中' : fmtWhen(lo.at)) + '</b> · <b>' +
+      esc(fmtShort(lo.seconds || 0)) + '</b>';
+  } else {
+    $('stOut').textContent = '';
+  }
+
+  // 电压紧跟状态词；有输出电压用输出，退而求其次用输入
+  var volt = isNum(m.output_voltage) ? m.output_voltage
+    : (isNum(m.input_voltage) ? m.input_voltage : null);
+  $('stVolt').textContent = volt !== null ? volt + ' V' : '';
 
   $('mCharge').textContent = isNum(m.charge) ? m.charge : '—';
   $('mRuntime').textContent = isNum(m.runtime) ? fmtShort(m.runtime) : '—';
@@ -417,9 +653,26 @@ function render(s){
   var policy;
   if (s.shutting_down) policy = '已执行关机';
   else if (!c.auto_shutdown) policy = '不关机';
+  else if (isNum(s.shutdown_threshold) && s.calibrating) policy = '标定中 ' + fmtShort(s.shutdown_threshold) + '后关机';
   else if (c.onbatt_seconds > 0) policy = '断电 ' + fmtShort(c.onbatt_seconds) + '后关机';
   else policy = '仅 LB / FSD 兜底';
-  $('mPolicy').textContent = policy;
+
+  // 参数胶囊：策略在前，正常态参数弱化，异常才上色
+  var chips = ['<span class="chip acc">' + esc(policy) + '</span>'];
+  if (isNum(m.transfer_low) && isNum(m.transfer_high)){
+    chips.push('<span class="chip">切换 <b>' + m.transfer_low + '–' + m.transfer_high + ' V</b></span>');
+  }
+  if (isNum(m.input_voltage)){
+    chips.push('<span class="chip">输入 <b>' + m.input_voltage + ' V</b></span>');
+  }
+  if (m.beeper) chips.push('<span class="chip">蜂鸣 <b>' + esc(beeper(m.beeper)) + '</b></span>');
+  var protOk = c.shutdown_on_lb && c.shutdown_on_fsd;
+  chips.push('<span class="chip' + (protOk ? '' : ' warn') + '">保护 <b>LB ' +
+    (c.shutdown_on_lb ? '关机' : '忽略') + ' · FSD ' + (c.shutdown_on_fsd ? '响应' : '忽略') + '</b></span>');
+  if (s.status.raw && s.status.raw.indexOf('OVER') >= 0){
+    chips.push('<span class="chip bad">超载</span>');
+  }
+  $('ovChips').innerHTML = chips.join('');
 
   // 三张卡
   $('cCharge').innerHTML = isNum(m.charge)
@@ -431,38 +684,28 @@ function render(s){
     kv('电池电压', isNum(m.bat_voltage) ? m.bat_voltage + ' V' : '')
   ].join('') || '<div class="kv"><b>—</b><span></span></div>';
   renderBatteryHealth(s.battery || {});
+  renderMaint(s);
+  renderCalib(s);
 
-  $('cLoad').innerHTML = isNum(m.load)
-    ? m.load + '<i>%</i>' : '<span style="font-size:15px;color:var(--muted)">读不到负载</span>';
-  $('cLoadRows').innerHTML = [
-    kv('视在功率', isNum(m.power_va) ? m.power_va + ' VA' : ''),
-    kv('额定容量', isNum(m.power_nominal) ? m.power_nominal + ' VA' : ''),
-    kv('剩余余量', isNum(m.power_rest) ? m.power_rest + ' VA' : ''),
-    kv('驱动状态', s.status.raw && s.status.raw.indexOf('OVER') >= 0 ? '超载' : '正常')
-  ].join('');
-
-  $('cVolt').innerHTML = isNum(m.output_voltage)
-    ? m.output_voltage + '<i>V 输出</i>'
-    : '<span style="font-size:15px;color:var(--muted)">读不到电压</span>';
-  $('cMainsRows').innerHTML = [
-    kv('切换区间', (isNum(m.transfer_low) && isNum(m.transfer_high))
-      ? m.transfer_low + '–' + m.transfer_high + ' V' : ''),
-    kv('输入电压', isNum(m.input_voltage) ? m.input_voltage + ' V' : '驱动未上报'),
-    kv('蜂鸣器', beeper(m.beeper))
-  ].join('');
+  $('mLoadSub').textContent = (isNum(m.power_va) ? m.power_va + ' VA' : '—') +
+    (isNum(m.power_nominal) ? ' / ' + m.power_nominal + ' VA' : '');
 
   // 横幅
   var b = $('banner');
   $('btnRepair').style.display = (s.can_shutdown === false) ? '' : 'none';
   b.classList.remove('show');
-  if (s.shutting_down){
+  if (s.calib_grace_left > 0){
+    b.classList.add('show');
+    b.innerHTML = '<b>标定已结束，请立即插回 UPS 市电</b>：还有 ' +
+      fmtShort(s.calib_grace_left) + ' 就按原策略关机。';
+  } else if (s.shutting_down){
     b.classList.add('show');
     b.innerHTML = '<b>已执行关机</b>：' + esc(s.shutdown_reason);
   } else if (s.status.onbatt){
     b.classList.add('show');
     b.innerHTML = '<b>正在使用电池供电</b>，已持续 ' + fmtShort(s.onbatt_elapsed) +
       '；' + (s.shutdown_in !== null && s.shutdown_in !== undefined
-        ? (c.auto_shutdown ? '还有 ' + fmtShort(s.shutdown_in) + '触发关机' : '自动关机未启用，不会关机')
+        ? (c.auto_shutdown ? (s.calibrating ? '标定中，还有 ' : '还有 ') + fmtShort(s.shutdown_in) + '触发关机' : '自动关机未启用，不会关机')
         : (c.auto_shutdown ? '按策略计时中' : '自动关机未启用，不会关机')) + '。';
   } else if (!s.connected){
     b.classList.add('show');
@@ -522,6 +765,306 @@ function renderBatteryHealth(b){
     '<div class="bh-msg">' + esc(b.message || '') + '</div>' +
     (nums.length ? '<div class="bh-nums">' + nums.join('') + '</div>' : '');
 }
+
+// -------------------------------------------------- 弹窗
+var SHEET_ON = false;
+
+function openSheet(opt){
+  $('sheetTitle').textContent = opt.title || '';
+  $('sheetBody').innerHTML = opt.body || '';
+  var foot = $('sheetFoot');
+  foot.innerHTML = '';
+  var actions = (opt.actions && opt.actions.length) ? opt.actions : [{label: '知道了', primary: true}];
+  actions.forEach(function(a){
+    var b = document.createElement('button');
+    b.textContent = a.label;
+    if (a.primary) b.className = 'primary';
+    b.onclick = function(){
+      if (a.keep !== true) closeSheet();
+      if (a.onClick) a.onClick();
+    };
+    foot.appendChild(b);
+  });
+  $('sheetWrap').classList.add('on');
+  document.body.style.overflow = 'hidden';
+  SHEET_ON = true;
+}
+
+function closeSheet(){
+  $('sheetWrap').classList.remove('on');
+  document.body.style.overflow = '';
+  SHEET_ON = false;
+}
+
+function notify(title, msg){
+  openSheet({title: title, body: '<p>' + esc(msg) + '</p>'});
+}
+
+// -------------------------------------------------- 电池保养
+function renderMaint(s){
+  var box = $('cMaint');
+  var m = s.maintenance || {};
+  if (!m.level){ box.className = 'bmaint'; box.innerHTML = ''; return; }
+  var sh = m.short || {}, ca = m.calib || {};
+  var st = s.status || {};
+  var cal = s.calibration || {};
+  var secs = s.onbatt_elapsed || 0;
+
+  // 1) 正在放电：不需要点过「开始短测」，只要看到 OB 就直接进入计时。
+  //    标定期间由标定面板自己显示进度，这里让位，避免两处重复。
+  if (st.onbatt && !cal.active){
+    if (!BRIEF.seenAt){ BRIEF.seenAt = Date.now(); saveBrief(); }
+    var target = BRIEF.target || 90;
+    var title, note;
+    if (secs < target){
+      title = '放电中 · 短测';
+      note = '再放 <b>' + (target - secs) + '</b> 秒就够一次短测，然后插回市电。';
+    } else if (secs < 600){
+      title = '放电中 · 短测';
+      note = '已经够了，插回市电就会自动记一次，不用点任何按钮。';
+    } else {
+      title = '市电中断中';
+      note = '已放 ' + fmtDuration(secs) + '，这是一次真实断电；恢复市电后同样会自动记录。';
+    }
+    box.className = 'bmaint live';
+    box.innerHTML = '<button class="mrow" id="btnMaint" title="查看保养排期"><i></i>' +
+      '<span>' + title + '</span><span class="sp">已放 ' + fmtDuration(secs) + '</span>' +
+      '<span class="chev">›</span></button><div class="msg">' + note + '</div>';
+    return;
+  }
+
+  // 2) 刚恢复市电：立刻让后端统计这一段，然后回到常态
+  if (!st.onbatt && BRIEF.seenAt){
+    resetBrief();
+    box.className = 'bmaint';
+    box.innerHTML = '<button class="mrow" id="btnMaint"><i></i><span>保养</span>' +
+      '<span class="sp">正在记录这次放电…</span><span class="chev">›</span></button>';
+    post('/api/maint', {action: 'scan'}).then(function(j){
+      if (j && j.maintenance && state){ state.maintenance = j.maintenance; renderMaint(state); }
+    }).catch(function(){});
+    return;
+  }
+
+  // 3) 点过「开始短测」但还没拔电：只是给个待办提示，15 分钟没拔就自动收起
+  if (BRIEF.armedAt && Date.now() - BRIEF.armedAt < 900000){
+    box.className = 'bmaint due';
+    box.innerHTML = '<button class="mrow" id="btnMaint"><i></i><span>短测待开始</span>' +
+      '<span class="sp">拔掉市电放 ' + (BRIEF.target || 90) + ' 秒</span>' +
+      '<span class="chev">›</span></button>' +
+      '<div class="msg">拔掉 UPS 市电就会自动开始计时，不用再点别的。</div>';
+    return;
+  }
+  if (BRIEF.armedAt) resetBrief();
+
+  // 4) 常态
+  var parts = [];
+  if (isNum(sh.due_in_days)) parts.push('短测' + dueText(sh.due_in_days));
+  if (isNum(ca.due_in_days)) parts.push('标定' + dueText(ca.due_in_days));
+  if (m.deep_count) parts.push('深度放电 ' + m.deep_count + ' 次');
+  box.className = 'bmaint' + (m.level === 'ok' ? '' : ' ' + m.level);
+  box.innerHTML = '<button class="mrow" id="btnMaint" title="查看保养排期与做法"><i></i><span>保养</span>' +
+    '<span class="sp">' + parts.join(' · ') + '</span><span class="chev">›</span></button>' +
+    (m.level === 'ok' ? '' : alertHtml(m.message, m.level));
+}
+
+// 逾期/临期提醒：第一句（事实）用警示色，后面的做法保持常规色
+function alertHtml(msg, level){
+  msg = String(msg || '');
+  if (!msg) return '';
+  var i = msg.indexOf('。');
+  var head = i > 0 ? msg.slice(0, i) : msg;
+  var rest = i > 0 ? msg.slice(i + 1) : '';
+  return '<div class="alert' + (level === 'due' ? ' due' : '') + '"><b>' + esc(head) + '</b>' +
+    (rest ? '<span>' + esc(rest) + '</span>' : '') + '</div>';
+}
+
+function recentText(r){
+  var when = isNum(r.days) ? (r.days <= 0 ? '今天' : r.days + ' 天前') : '—';
+  var how = isNum(r.sec) ? fmtShort(r.sec) : '手动补记';
+  var drop = isNum(r.drop) ? ' · 电量降 ' + r.drop + '%' : '';
+  return when + ' · 放电 ' + how + drop;
+}
+
+function maintSheetBody(){
+  var m = (state && state.maintenance) || {}, sh = m.short || {}, ca = m.calib || {};
+  var rows = [];
+  rows.push('<div class="kv2"><div class="kv2-m"><b>短测（轻放）</b><span>' +
+    (isNum(sh.due_in_days) ? dueText(sh.due_in_days) + ' · 每 ' + (sh.interval || 30) + ' 天' : '—') + '</span></div></div>');
+  rows.push('<div class="kv2"><div class="kv2-m"><b>容量标定' +
+    infoBtn('为什么不是「定期放空」？') + '</b><span>' +
+    (isNum(ca.due_in_days) ? dueText(ca.due_in_days) + ' · 每 ' + Math.round((ca.interval || 180) / 30) + ' 个月' : '—') + '</span></div>' +
+    infoTip('为什么不是「定期放空」？',
+      '铅酸电池没有记忆效应，每深放一次都会在极板上留下硫酸铅结晶，放得越空越难还原。真正有用的是「90 秒轻放 + 及时充满」；标定每半年一次就够，电量降到 50% 会自动停。') +
+    '</div>');
+  rows.push('<div class="kv2"><div class="kv2-m"><b>上次短测</b><span>' +
+    (isNum(sh.last_days) ? sh.last_days + ' 天前 · 已记 ' + (sh.count || 0) + ' 次' : '还没有记录') + '</span></div></div>');
+  rows.push('<div class="kv2"><div class="kv2-m"><b>上次容量样本</b><span>' +
+    (isNum(ca.last_days) ? ca.last_days + ' 天前' : '还没有') + '</span></div></div>');
+  if (m.deep_count){
+    rows.push('<div class="kv2"><div class="kv2-m"><b>深度放电</b><span>' + m.deep_count + ' 次' +
+      (isNum(m.deep_last_days) ? ' · 最近 ' + m.deep_last_days + ' 天前' : '') + '</span></div></div>');
+  }
+  var recs = m.recent || [];
+  var recHtml = recs.length
+    ? '<div class="rec"><b>最近的放电记录' +
+      infoBtn('记录是自动的') + '</b>' +
+      infoTip('记录是自动的',
+        '任何 30 秒以上的放电——你拔的市电、真停电、容量标定——都会在恢复市电后自动记一次，并从当天重新排期。只有历史记录被清空、想补一次时才需要手动。') +
+      recs.map(function(r){
+        return '<div class="rl">' + esc(recentText(r)) + (r.manual ? '（手动补记）' : '') + '</div>';
+      }).join('') + '</div>'
+    : '';
+  return (m.level === 'ok' && m.message ? '<p>' + esc(m.message) + '</p>'
+      : alertHtml(m.message, m.level)) + rows.join('') + recHtml;
+}
+
+// ⓘ 说明：按钮点击后，紧随其后的 .itip 说明块展开/收起
+function infoBtn(title){
+  return '<button class="info" type="button" aria-label="' + esc(title) +
+    '" aria-expanded="false"><i>i</i></button>';
+}
+function infoTip(title, text){
+  return '<div class="itip" hidden><b>' + esc(title) + '</b>' + esc(text) + '</div>';
+}
+
+function openMaintSheet(){
+  openSheet({
+    title: '电池保养',
+    body: maintSheetBody(),
+    actions: [
+      {label: '容量标定', onClick: calibSheet},
+      {label: '开始短测', primary: true, onClick: briefSheet}
+    ]
+  });
+}
+
+function briefSheet(){
+  var c = (state && state.config) || {};
+  if (c.auto_shutdown && c.onbatt_seconds > 0 && c.onbatt_seconds < 180){
+    return notify('先把关机等待调长',
+      '当前「断电后等待」只有 ' + c.onbatt_seconds + ' 秒，短测会真的触发关机。请先调到 180 秒以上，或改用容量标定（会自动抬高阈值）。');
+  }
+  openSheet({
+    title: '短时放电测试',
+    body: '<p>拔掉 UPS 的市电输入，<b>放 90 秒左右</b>再插回。只做轻放，不放空。</p>' +
+      '<p><b>这一步不是必须的</b>：你直接拔电，界面也会自动进入放电计时、自动记录。这个按钮只是提前把待办挂出来。</p>' +
+      '<p>插回市电后会自动记一次；不改任何关机策略，也不会触发关机。</p>' +
+      '<div class="why">短测的目的是打散极板表面的轻微硫化、暴露内阻偏高的弱单体——UPS 固件每两周自检做的也是这件事。</div>',
+    actions: [
+      {label: '取消'},
+      {label: '开始，等我拔电', primary: true, onClick: function(){
+        BRIEF = {armedAt: Date.now(), seenAt: 0, target: 90};
+        saveBrief();
+        if (state) renderMaint(state);
+      }}
+    ]
+  });
+}
+
+function calibSheet(){
+  var s = state || {};
+  var hint = s.calib_hint || 10;
+  var runtime = (s.metrics && s.metrics.runtime) || null;
+  openSheet({
+    title: '容量标定',
+    body: '<p>临时抬高「断电计时关机」的阈值，换一段够长的放电曲线来算实际容量。</p>' +
+      '<div class="kv2"><b>建议放电</b><span>' + hint + ' 分钟' + (runtime ? '（当前续航 ' + fmtShort(runtime) + '）' : '') + '</span></div>' +
+      '<div class="kv2"><b>窗口</b><span>15 分钟，到点自动恢复</span></div>' +
+      '<div class="kv2"><b>电量保护</b><span>降到 50% 自动结束</span></div>' +
+      '<p style="margin-top:10px">结束后如果还没插回市电，<b>先宽限 3 分钟</b>，再按原策略关机。</p>' +
+      '<div class="why">LB（低电量）与 FSD（上游强制关机）保护全程有效。配置文件不会被改动，进程重启即失效。</div>',
+    actions: [
+      {label: '取消'},
+      {label: '开始，等我拔电', primary: true, onClick: function(){
+        post('/api/calibrate', {minutes: 15}).then(function(j){
+          if (j.error) return notify('启动失败', j.error);
+          tick();
+        }).catch(function(err){ notify('启动失败', String(err)); });
+      }}
+    ]
+  });
+}
+
+function dueText(d){
+  if (d > 0) return d + ' 天后';
+  if (d === 0) return '今天到期';
+  return '已过 ' + (-d) + ' 天';
+}
+
+function renderCalib(s){
+  var box = $('cCalib');
+  var cal = s.calibration || {};
+  if (s.calib_grace_left > 0){
+    box.className = 'bcal on';
+    box.innerHTML = '<div class="row"><span>标定已结束 · <b>请立即插回市电</b></span>' +
+      '<span class="sp mini">还有 <b>' + fmtShort(s.calib_grace_left) + '</b> 关机</span></div>';
+    return;
+  }
+  if (!cal.active){
+    var last = cal.last && (s.now - cal.last.at) < 86400 ? cal.last : null;
+    box.className = 'bcal';
+    box.innerHTML = last ? '<div class="mini">' + esc(last.message) + '</div>' : '';
+    return;
+  }
+  var total = (cal.window || 0) * 60;
+  var pct = total ? Math.max(0, Math.min(100, Math.round((total - cal.left) / total * 100))) : 0;
+  var head, tip;
+  if (cal.phase === 'discharging'){
+    head = '放电中，已持续 <b>' + fmtShort(s.onbatt_elapsed) + '</b>';
+    tip = cal.sample_ready
+      ? '已采到可用样本，可以插回市电了。'
+      : '继续放电到 ' + cal.hint + ' 分钟以上，让电量降幅超过 3%。';
+  } else {
+    head = '等待断开市电';
+    tip = '拔掉 UPS 的市电输入（或断开空开），保持 ' + cal.hint + ' 分钟；LB / FSD 保护仍有效。';
+  }
+  box.className = 'bcal on';
+  box.innerHTML = '<div class="row"><span>' + head + '</span>' +
+      '<span class="sp mini">窗口剩余 <b>' + fmtShort(cal.left) + '</b></span></div>' +
+    '<div class="bar"><i style="width:' + pct + '%"></i></div>' +
+    '<div class="row"><span class="mini">' + esc(tip) + '</span>' +
+      '<button class="lb sp" id="btnCalibStop">结束标定</button></div>';
+}
+
+document.addEventListener('click', function(e){
+  var info = e.target.closest ? e.target.closest('.info') : null;
+  if (info){
+    var box = info.closest('.kv2, .rec');
+    var tip = box && box.querySelector('.itip');
+    if (tip){
+      var open = tip.hidden;
+      tip.hidden = !open;
+      info.classList.toggle('open', open);
+      info.setAttribute('aria-expanded', open ? 'true' : 'false');
+    }
+    return;
+  }
+  if (e.target.id === 'btnMaint'){ openMaintSheet(); return; }
+  if (e.target.id === 'btnBrief'){ briefSheet(); return; }
+  if (e.target.id === 'btnCalib' || e.target.id === 'btnCalib2'){ calibSheet(); return; }
+  if (e.target.id === 'btnCalibStop'){
+    openSheet({
+      title: '结束标定',
+      body: '<p>立刻恢复原来的关机策略。</p><p>如果现在还在放电，且原策略的计时早该到点，<b>会先宽限 3 分钟</b>再关机——够你插回市电。</p>',
+      actions: [
+        {label: '继续标定'},
+        {label: '结束', primary: true, onClick: function(){
+          post('/api/calibrate', {action: 'stop'}).then(function(j){
+            if (j.error) return notify('结束失败', j.error);
+            tick();
+            if (j.result && j.result.grace) notify('标定已结束', j.result.message);
+          }).catch(function(err){ notify('结束失败', String(err)); });
+        }}
+      ]
+    });
+    return;
+  }
+  if (e.target.hasAttribute && e.target.hasAttribute('data-sheet-close')){ closeSheet(); return; }
+});
+
+document.addEventListener('keydown', function(e){
+  if (e.key === 'Escape' && SHEET_ON) closeSheet();
+});
 
 function batType(t){
   if (!t) return '';
@@ -701,7 +1244,7 @@ function renderStats(d){
       '<small>次</small></div></div>' +
     '<div class="stat"><div class="k">累计断电时长</div><div class="n">' + fmtShort(s.total_seconds || 0) +
       '</div></div>' +
-    '<div class="stat"><div class="k">上次断电</div><div class="n" style="font-size:15px;letter-spacing:0">' +
+    '<div class="stat"><div class="k">上次断电</div><div class="n sm">' +
       lastTxt + '</div></div>' +
     '<div class="stat"><div class="k">最长一次</div><div class="n">' + fmtShort(s.longest_seconds || 0) +
       '</div></div>';
@@ -755,9 +1298,9 @@ $('chartBox').addEventListener('mouseleave', function(){
 window.addEventListener('resize', function(){ drawTrend(); });
 
 $('rangeChips').addEventListener('click', function(e){
-  var btn = e.target.closest('.chip');
+  var btn = e.target.closest('.seg');
   if (!btn) return;
-  Array.prototype.forEach.call(this.querySelectorAll('.chip'), function(b){ b.classList.remove('on'); });
+  Array.prototype.forEach.call(this.querySelectorAll('.seg'), function(b){ b.classList.remove('on'); });
   btn.classList.add('on');
   TREND.range = btn.dataset.range;
   loadTrend();

@@ -1,6 +1,9 @@
 """生成带样例数据的界面预览页（不连后端）。用法：
     python tools/gen_preview.py            # 默认展示「电池健康正常」
     python tools/gen_preview.py due        # 展示「电池需要更换」+ 顶部提示条
+    python tools/gen_preview.py calib      # 展示「容量标定进行中」
+    python tools/gen_preview.py maint      # 展示「该做电池保养了」
+    python tools/gen_preview.py live       # 展示「拔电后自动进入放电计时」
 """
 import os
 import sys
@@ -8,6 +11,17 @@ import sys
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 src_path = os.path.join(ROOT, "app", "public", "index.html")
 out_path = os.path.join(ROOT, "preview", "demo.html")
+
+# 版本号从 manifest 读，避免每发一版就改这里
+APP_VER = "0.0.0"
+try:
+    with open(os.path.join(ROOT, "manifest"), encoding="utf-8") as f:
+        for line in f:
+            if line.startswith("version"):
+                APP_VER = line.split("=")[1].strip()
+                break
+except OSError:
+    pass
 
 mode = (sys.argv[1] if len(sys.argv) > 1 else "ok").lower()
 
@@ -21,11 +35,27 @@ BATTERY_DUE = """{level:"due", message:"实测容量比基线下降 38%（42 →
     measured_minutes:26, baseline_minutes:42, decay_pct:38.1, samples:4, last_outage_at:NOW-86400,
     charge_low:20, test_date:"2026/03/02", test_age_days:231, charge_stuck_days:0}"""
 
-battery = BATTERY_DUE if mode == "due" else BATTERY_OK
+MAINT_OK = """{level:"ok", message:"短测还有 12 天，标定还有 141 天。",
+    next_in_days:12,
+    short:{interval:30, last_at:NOW-1555200, last_days:18, due_in_days:12, count:3},
+    calib:{interval:180, last_at:NOW-3369600, last_days:39, due_in_days:141},
+    deep_count:0, deep_last_days:null,
+    recent:[{at:NOW-1555200, days:18, sec:104, drop:1.0, manual:false},
+            {at:NOW-2160000, days:25, sec:96, drop:1.0, manual:false},
+            {at:NOW-2505600, days:29, sec:88, drop:1.0, manual:false}]}"""
 
-DEMO = """
-<script>
-/* 演示用：拦截 fetch 喂样例数据，不连后端。模式：%(mode)s */
+MAINT_DUE = """{level:"due", message:"短测已过计划日期 17 天（建议每 30 天一次）。拔掉市电 90 秒再插回，不用放空。",
+    next_in_days:-17,
+    short:{interval:30, last_at:NOW-4060800, last_days:47, due_in_days:-17, count:2},
+    calib:{interval:180, last_at:NOW-3369600, last_days:39, due_in_days:141},
+    deep_count:1, deep_last_days:23,
+    recent:[{at:NOW-4060800, days:47, sec:162, drop:2.0, manual:false},
+            {at:NOW-6739200, days:78, sec:95, drop:1.0, manual:false}]}"""
+
+battery = BATTERY_DUE if mode == "due" else BATTERY_OK
+maint = MAINT_DUE if mode in ("maint", "due") else MAINT_OK
+
+DEMO = """<script>
 var VARS = {
   "ups.status":"OL CHRG", "battery.charge":"100", "battery.charge.low":"20",
   "battery.runtime":"1200", "battery.type":"PbAc", "ups.load":"11",
@@ -37,8 +67,12 @@ var VARS = {
   "output.voltage.nominal":"230"
 };
 var NOW = Math.floor(Date.now()/1000);
+var IDLE_CALIB = {active:false, last:null};
+var CALIB_ON = {active:true, left:480, window:15, hint:12, phase:"discharging",
+  threshold:1200, orig_threshold:300, charge:88, floor:50, sample_ready:false,
+  sample:null, started:NOW-420};
 var DEMO_STATE = {
-  version:"1.2.0", connected:true, error:"", last_poll:NOW-2, now:NOW,
+  version:"%(ver)s", connected:true, error:"", last_poll:NOW-2, now:NOW,
   vars:VARS,
   metrics:{charge:100, charge_low:20, runtime:1200, load:11, power_nominal:600,
     power_va:66, power_rest:534, bat_type:"PbAc", bat_voltage:null, input_voltage:null,
@@ -49,7 +83,9 @@ var DEMO_STATE = {
   status_text:"OL（市电在线） CHRG（充电中）",
   onbatt_elapsed:0, online_for:8040, shutdown_in:null,
   shutting_down:false, shutdown_reason:"", can_shutdown:true, has_password:false,
-  battery: %(battery)s,
+  battery: %(battery)s, maintenance: %(maint)s, calib_hint:8, calib_grace_left:0,
+  last_outage:{at:NOW-1123200, seconds:270, ongoing:false},
+  shutdown_threshold:300, calibration:IDLE_CALIB,
   config:{host:"192.168.1.20", port:3493, ups:"ups", username:"monuser",
     interval:5, onbatt_seconds:300, shutdown_on_lb:true, shutdown_on_fsd:true,
     auto_shutdown:true, battery_installed:"2026-10-15", battery_life_months:24,
@@ -60,7 +96,7 @@ var DEMO_STATE = {
     {ts:NOW-5600, kind:"onbatt", msg:"开始使用电池供电"},
     {ts:NOW-5601, kind:"status", msg:"状态变化：OL（市电在线） → OB（电池供电） DISCHRG（放电中）"},
     {ts:NOW-86400, kind:"battery", msg:"已记录电池基线：满电到 20%% 约 42 分钟（当前负载）"},
-    {ts:NOW-8040, kind:"start", msg:"UPSLink 1.2.0 启动，监听 0.0.0.0:8099"}
+    {ts:NOW-8040, kind:"start", msg:"UPSLink %(ver)s 启动，监听 0.0.0.0:8099"}
   ]
 };
 
@@ -88,7 +124,7 @@ function fakeStats(sec){
   return {count:n, total_seconds:total, last_at:last, longest_seconds:longest,
           ongoing:false, window_start:NOW-sec};
 }
-var DEMO_CHECK = {ok:true, version:"1.2.0", checks:[
+var DEMO_CHECK = {ok:true, version:"%(ver)s", checks:[
   {level:"ok", title:"上游地址已配置", detail:"192.168.1.20:3493 · UPS 名称 ups"},
   {level:"ok", title:"数据目录可写", detail:"/vol1/@appdata/upslink"},
   {level:"ok", title:"配置文件存在", detail:"config.json"},
@@ -120,13 +156,61 @@ window.fetch = function(url){
   return Promise.resolve({ok:true, status:200, json:function(){ return Promise.resolve(body); }});
 };
 </script>
-""" % {"battery": battery, "mode": mode}
+""" % {"battery": battery, "maint": maint, "mode": mode, "ver": APP_VER}
+
+
+def onbatt(demo, elapsed, shutdown_in, charge=None):
+    """把样例数据改成「正在放电」。"""
+    demo = demo.replace('status:{raw:"OL CHRG", online:true, onbatt:false, low:false, fsd:false}',
+                        'status:{raw:"OB DISCHRG", online:false, onbatt:true, low:false, fsd:false}')
+    demo = demo.replace('status_text:"OL（市电在线） CHRG（充电中）"',
+                        'status_text:"OB（电池供电） DISCHRG（放电中）"')
+    demo = demo.replace('"ups.status":"OL CHRG"', '"ups.status":"OB DISCHRG"')
+    demo = demo.replace('onbatt_elapsed:0, online_for:8040',
+                        'onbatt_elapsed:%d, online_for:0' % elapsed)
+    demo = demo.replace('shutdown_in:null', 'shutdown_in:%d' % shutdown_in)
+    if charge is not None:
+        demo = demo.replace('"battery.charge":"100"', '"battery.charge":"%d"' % charge)
+        demo = demo.replace('metrics:{charge:100', 'metrics:{charge:%d' % charge)
+    return demo
+
+
+if mode == "calib":
+    DEMO = onbatt(DEMO, 420, 780, charge=91)
+    DEMO = DEMO.replace('shutdown_threshold:300', 'shutdown_threshold:1200, calibrating:true')
+    DEMO = DEMO.replace('calibration:IDLE_CALIB', 'calibration:CALIB_ON')
+    DEMO = DEMO.replace('{ts:NOW-120, kind:"test", msg:"测试连接成功，耗时 2 ms"},',
+                        '{ts:NOW-420, kind:"calibrate", msg:"开始容量标定：15 分钟窗口内不因断电计时关机（临时阈值 1200 秒）"},'
+                        '{ts:NOW-120, kind:"test", msg:"测试连接成功，耗时 2 ms"},')
+elif mode == "live":
+    # 只是拔掉市电 64 秒：不点任何按钮，卡片自己进入「放电中 · 短测」
+    DEMO = onbatt(DEMO, 64, 236, charge=99)
 
 src = open(src_path, encoding="utf-8").read()
 marker = "<script>\nvar state = null;"
 assert marker in src, "index.html 结构变了，找不到注入点"
 src = src.replace(marker, DEMO + marker, 1)
-src = src.replace("<title>UPSLink · UPS 联动</title>", "<title>UPSLink · 界面预览（样例数据）</title>")
+
+if mode in ("maint", "live"):
+    # 预览页是静态样例：面板只能由这个示例按钮打开，真实界面绝不会自动弹窗
+    bar = ('<div style="position:fixed;right:14px;bottom:14px;z-index:50;display:flex;'
+           'align-items:center;gap:6px;padding:7px 9px;border-radius:11px;'
+           'background:var(--panel);border:1px solid var(--line);'
+           'box-shadow:0 6px 20px rgba(0,0,0,.10);font:12px/1 -apple-system,'
+           'BlinkMacSystemFont,Segoe UI,sans-serif;color:var(--muted)">'
+           '<span style="padding:0 2px">样例</span>'
+           '<button onclick="openMaintSheet()" style="padding:5px 9px;border-radius:7px;'
+           'border:1px solid var(--line);background:transparent;color:var(--text);'
+           'font:inherit;cursor:pointer">保养面板</button>'
+           '<button onclick="calibSheet()" style="padding:5px 9px;border-radius:7px;'
+           'border:1px solid var(--line);background:transparent;color:var(--text);'
+           'font:inherit;cursor:pointer">容量标定</button></div>')
+    src = src.replace("</body>", bar + "</body>")
+
+src = src.replace("<title>UPSLink · UPS 联动</title>",
+                  "<title>UPSLink · 界面预览（样例数据）</title>")
+
+# 悬停到曲线中段，让光标读数与提示框直接可见
 src = src.replace("setTimeout(drawTrend, 300);",
                   "setTimeout(function(){ drawTrend(); "
                   "var b=document.getElementById('chartBox').getBoundingClientRect(); "
@@ -135,3 +219,12 @@ src = src.replace("setTimeout(drawTrend, 300);",
 os.makedirs(os.path.dirname(out_path), exist_ok=True)
 open(out_path, "w", encoding="utf-8").write(src)
 print("written %s (%s 模式, %d bytes)" % (out_path, mode, len(src)))
+
+# 追加深色验证副本（demo_dark.html）：把 dark media 查询固定为 .forceDark class，
+# 便于在浅色系统上直接预览深色主题。每次生成都随 demo.html 重建，不会过时。
+import re
+dark = re.sub(r'@media \(prefers-color-scheme: dark\)\{\s*:root\{([^\0]*?)\}\s*\}',
+              lambda m: '.forceDark{' + m.group(1) + '}', src)
+dark = dark.replace('<html lang="zh-CN">', '<html lang="zh-CN" class="forceDark">')
+dark_path = os.path.join(os.path.dirname(out_path), "demo_dark.html")
+open(dark_path, "w", encoding="utf-8").write(dark)

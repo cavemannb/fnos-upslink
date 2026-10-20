@@ -26,7 +26,7 @@ import traceback
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from urllib.parse import parse_qs, urlparse
 
-APP_VERSION = "1.2.0"
+APP_VERSION = "1.8.3"
 PORT = int(os.environ.get("UPSLINK_PORT") or os.environ.get("TRIM_SERVICE_PORT") or "8099")
 DATA_DIR = os.environ.get("TRIM_PKGVAR") or os.environ.get("UPSLINK_DATA") or "/opt/upslink/var"
 CONF_PATH = os.path.join(DATA_DIR, "config.json")
@@ -42,6 +42,25 @@ TREND_KEEP_DAYS = 30
 TREND_SAMPLE_GAP = 300
 TREND_MAX_POINTS = 600
 TREND_RANGES = {"1h": 3600, "6h": 21600, "24h": 86400, "7d": 604800}
+
+# 容量标定：临时抬高「断电计时关机」阈值，换一次足够长的放电窗口
+CALIB_PATH = os.path.join(DATA_DIR, "calibration.json")
+CALIB_DEFAULT_MIN = 15          # 默认窗口（分钟）：够放 12 分钟，留 3 分钟余量
+CALIB_MIN_MIN, CALIB_MAX_MIN = 6, 30
+CALIB_MARGIN = 300              # 窗口之外的额外保护时间（秒）
+CALIB_FLOOR_CHARGE = 50         # 电量降到这个数就中止，别把电池放空
+CALIB_MIN_WINDOW = 8            # 与 measure_capacity 的门槛一致，用于提示文案
+CALIB_HINT_MAX = 12             # 建议放电时长上限，别把电池放太狠
+CALIB_GRACE = 180               # 标定结束后留给用户插回市电的宽限（秒）
+
+# 电池保养：铅酸电池没有记忆效应，深度放电只会加速硫化。
+# 所以这里排的是「短时轻放」和「半年一次标定」，不是「定期放空」。
+MAINT_PATH = os.path.join(DATA_DIR, "maintenance.json")
+MAINT_SHORT_DAYS = 30           # 短测建议间隔
+MAINT_CALIB_DAYS = 180          # 标定建议间隔（6 个月）
+MAINT_SHORT_MIN_SEC = 30        # 短于这个时长的状态抖动不算一次放电
+MAINT_DEEP_CHARGE = 40          # 记录到的最低电量低于这个值 → 记一次深度放电
+MAINT_KEEP_RECORDS = 12
 
 
 # NUT 的 ups.status 是空格分隔的简写标志位，界面上统一补中文注释
@@ -494,50 +513,108 @@ def _save_battery_state(state):
         pass
 
 
-def measure_capacity(trend, charge_low=20):
-    """从历史断电区间反推电池可用时长，比固件报的 runtime 更贴合真实老化。
+def ob_runs(trend):
+    """把趋势采样切成一段段电池供电区间，供容量计算和保养统计共用。
 
-    只用「时长够、电量真的掉了」的区间——短于 8 分钟或掉电不足 3% 的样本
-    噪声太大，直接丢弃。返回值按当前负载归一化由调用方完成。
+    open=True 表示这段还在放电（最后一条采样仍是 OB），此时「时长」只是
+    到目前为止的跨度，调用方要自己决定是否采信。
     """
     try:
         samples = list(trend.samples)
     except Exception:
         return []
-    low = charge_low if charge_low is not None else 20
     runs, cur = [], []
     for s in samples:
         ob = "OB" in str(s.get("s") or "").upper().split()
         if ob:
             cur.append(s)
         elif cur:
-            runs.append(cur)
+            runs.append((cur, False))
             cur = []
     if cur:
-        runs.append(cur)
+        runs.append((cur, True))
 
     out = []
-    for run in runs:
-        if len(run) < 2:
-            continue
+    for run, is_open in runs:
         a, b = run[0], run[-1]
-        minutes = (b.get("t", 0) - a.get("t", 0)) / 60.0
-        c0, c1 = a.get("c"), b.get("c")
+        cs = [x.get("c") for x in run if isinstance(x.get("c"), (int, float))]
+        loads = [x.get("l") for x in run if x.get("l")]
+        out.append({
+            "start": a.get("t", 0),
+            "at": b.get("t", 0),
+            "seconds": max(0, int(b.get("t", 0) - a.get("t", 0))),
+            "c0": a.get("c"),
+            "c1": b.get("c"),
+            "min_c": min(cs) if cs else None,
+            "load": (sum(loads) / float(len(loads))) if loads else None,
+            "n": len(run),
+            "open": is_open,
+        })
+    return out
+
+
+def measure_capacity(trend, charge_low=20):
+    """从历史断电区间反推电池可用时长，比固件报的 runtime 更贴合真实老化。
+
+    只用「时长够、电量真的掉了」的区间——短于 8 分钟或掉电不足 3% 的样本
+    噪声太大，直接丢弃。返回值按当前负载归一化由调用方完成。
+    """
+    low = charge_low if charge_low is not None else 20
+    out = []
+    for r in ob_runs(trend):
+        if r["n"] < 2:
+            continue
+        minutes = r["seconds"] / 60.0
+        c0, c1 = r["c0"], r["c1"]
         if minutes < 8 or c0 is None or c1 is None:
             continue
         drop = c0 - c1
         if drop < 3 or c0 <= low:
             continue
         full = (c0 - low) * minutes / drop           # 当时从 c0 掉到 low 需要多久
-        loads = [x.get("l") for x in run if x.get("l")]
         out.append({
-            "at": int(b.get("t", 0)),
+            "at": r["at"],
             "minutes": round(full, 1),
             "window_min": round(minutes, 1),
             "drop": round(drop, 1),
-            "load": round(sum(loads) / float(len(loads)), 1) if loads else None,
+            "load": round(r["load"], 1) if r["load"] else None,
         })
     return out[-5:]
+
+
+def capacity_runs_since(trend, charge_low, since_ts):
+    """标定窗口内新出现的可用样本（含正在放电、还没来电的那一段）。"""
+    try:
+        runs = measure_capacity(trend, charge_low)
+    except Exception:
+        return []
+    return [r for r in runs if r.get("at", 0) >= since_ts]
+
+
+def _load_calib():
+    try:
+        with open(CALIB_PATH, "r", encoding="utf-8") as f:
+            return json.load(f) or None
+    except Exception:
+        return None
+
+
+def _save_calib(state):
+    try:
+        tmp = CALIB_PATH + ".tmp"
+        with open(tmp, "w", encoding="utf-8") as f:
+            json.dump(state, f, ensure_ascii=False, indent=2)
+        os.replace(tmp, CALIB_PATH)
+    except Exception:
+        pass
+
+
+def _clear_calib():
+    try:
+        if os.path.isfile(CALIB_PATH):
+            os.remove(CALIB_PATH)
+    except Exception:
+        pass
 
 
 def battery_health(conf, vars_, trend, events=None):
@@ -640,6 +717,189 @@ def battery_health(conf, vars_, trend, events=None):
     }
 
 
+# ---------------------------------------------------------------- 电池保养
+def _maint_default():
+    return {
+        "created_at": int(time.time()),
+        "last_short_at": None,
+        "last_calib_at": None,
+        "scan_at": 0,          # 已经统计过的放电区间，避免同一段重复计数
+        "brief": [],           # 短时放电记录
+        "deep_count": 0,
+        "deep_last_at": None,
+    }
+
+
+def _load_maint():
+    state = _maint_default()
+    try:
+        with open(MAINT_PATH, "r", encoding="utf-8") as f:
+            data = json.load(f) or {}
+        if isinstance(data, dict):
+            state.update(data)
+    except Exception:
+        pass
+    return state
+
+
+def _save_maint(state):
+    try:
+        tmp = MAINT_PATH + ".tmp"
+        with open(tmp, "w", encoding="utf-8") as f:
+            json.dump(state, f, ensure_ascii=False, indent=2)
+        os.replace(tmp, MAINT_PATH)
+    except Exception:
+        pass
+
+
+def mark_calibrated(at=None):
+    """标定或一次足够长的真实断电都算「刷新了容量样本」。"""
+    state = _load_maint()
+    at = int(at or time.time())
+    state["last_calib_at"] = max(int(state.get("last_calib_at") or 0), at)
+    _save_maint(state)
+
+
+def maintenance_status(trend, events=None):
+    """电池保养排期：短测（轻放）+ 标定（测容量），外加深度放电计数。
+
+    只做建议，不碰任何关机逻辑——这里产出的 level 最多影响界面颜色。
+    """
+    now = int(time.time())
+    state = _load_maint()
+    dirty = False
+
+    # ---- 1. 把「已经结束」的放电区间过一遍：短的记短测，长的记标定，过深的记警告
+    scan = int(state.get("scan_at") or 0)
+    for r in ob_runs(trend):
+        if r["open"] or r["at"] <= scan:
+            continue
+        scan = r["at"]
+        dirty = True
+        sec = r["seconds"]
+        if sec >= MAINT_SHORT_MIN_SEC:
+            state["last_short_at"] = max(int(state.get("last_short_at") or 0), r["at"])
+            brief = list(state.get("brief") or [])
+            brief.append({"at": r["at"], "sec": sec, "c0": r["c0"], "c1": r["c1"]})
+            state["brief"] = brief[-MAINT_KEEP_RECORDS:]
+            if events and sec >= 60:
+                events.add("maint", "电池短测：放电 %d 秒（电量 %s%% → %s%%），已计入保养记录"
+                           % (sec, r["c0"] if r["c0"] is not None else "?",
+                              r["c1"] if r["c1"] is not None else "?"))
+        minutes = sec / 60.0
+        drop = None
+        if isinstance(r["c0"], (int, float)) and isinstance(r["c1"], (int, float)):
+            drop = r["c0"] - r["c1"]
+        if minutes >= CALIB_MIN_WINDOW and drop is not None and drop >= 3:
+            state["last_calib_at"] = max(int(state.get("last_calib_at") or 0), r["at"])
+            if events:
+                events.add("maint", "容量样本已更新：这次放电 %.1f 分钟、电量降 %.0f%%，下一次标定建议半年后"
+                           % (minutes, drop))
+        if r["min_c"] is not None and r["min_c"] <= MAINT_DEEP_CHARGE:
+            state["deep_count"] = int(state.get("deep_count") or 0) + 1
+            state["deep_last_at"] = r["at"]
+            if events:
+                events.add("maint", "深度放电：记录到的最低电量只有 %d%%。铅酸电池放到这么低会加速硫化，"
+                                    "下次尽量在 60%% 以上就恢复市电。" % r["min_c"])
+    if dirty:
+        state["scan_at"] = scan
+        _save_maint(state)
+
+    # ---- 2. 排期
+    base = int(state.get("created_at") or now)
+    last_short = int(state.get("last_short_at") or 0)
+    last_calib = int(state.get("last_calib_at") or 0)
+    short_due = (last_short or base) + MAINT_SHORT_DAYS * 86400
+    calib_due = (last_calib or base) + MAINT_CALIB_DAYS * 86400
+    # 四舍五入取整天数：floor 除法会把「刚好满 10 天 + 1 秒」算成 11 天，
+    # 对用户的直觉是「还差一点才算 11 天」，所以不足半天不进位。
+    short_days = int(round((short_due - now) / 86400.0))
+    calib_days = int(round((calib_due - now) / 86400.0))
+    nearest = min(short_days, calib_days)
+
+    # 过期不做「推迟」：提醒就是排期本身，用户做没做都用放电记录说话。
+    # 文案只报「已过计划日期 N 天」，不催、不静默。
+    if nearest <= 0:
+        level = "due"
+        if calib_days <= short_days:
+            over = int(-calib_days)
+            when = ("已过计划日期 %d 天" % over) if over > 0 else "今天到计划日期"
+            message = ("容量标定%s（建议每 %d 个月一次）。放电到 80%% 左右就够，不要放空。"
+                       % (when, MAINT_CALIB_DAYS // 30))
+        else:
+            over = int(-short_days)
+            when = ("已过计划日期 %d 天" % over) if over > 0 else "今天到计划日期"
+            message = ("短测%s（建议每 %d 天一次）。拔掉市电 90 秒再插回，不用放空。"
+                       % (when, MAINT_SHORT_DAYS))
+    elif nearest <= 7:
+        level = "warn"
+        message = "快到保养时间了：短测还有 %d 天，标定还有 %d 天。" % (short_days, calib_days)
+    else:
+        level = "ok"
+        if not last_short and not last_calib:
+            message = ("还没有维护记录。建议每 %d 天做一次短测（拔市电 1~2 分钟），"
+                       "每 %d 个月做一次标定。" % (MAINT_SHORT_DAYS, MAINT_CALIB_DAYS // 30))
+        else:
+            message = "短测还有 %d 天，标定还有 %d 天。" % (short_days, calib_days)
+
+    return {
+        "level": level,
+        "message": message,
+        "next_in_days": int(nearest),
+        "short": {
+            "interval": MAINT_SHORT_DAYS,
+            "last_at": last_short or None,
+            "last_days": (now - last_short) // 86400 if last_short else None,
+            "due_in_days": int(short_days),
+            "count": len(state.get("brief") or []),
+        },
+        "calib": {
+            "interval": MAINT_CALIB_DAYS,
+            "last_at": last_calib or None,
+            "last_days": (now - last_calib) // 86400 if last_calib else None,
+            "due_in_days": int(calib_days),
+        },
+        "deep_count": int(state.get("deep_count") or 0),
+        "deep_last_days": (now - int(state["deep_last_at"])) // 86400
+        if state.get("deep_last_at") else None,
+        # 最近几次放电：全部由趋势采样自动统计，手工补记会带 manual=True。
+        # 界面上直接列出来，用户就不用靠「记一次」按钮自己报数。
+        "recent": _recent_briefs(state, now),
+    }
+
+
+def _recent_briefs(state, now, limit=4):
+    out = []
+    for b in list(state.get("brief") or [])[-limit:][::-1]:
+        try:
+            at = int(b.get("at") or 0)
+        except (TypeError, ValueError):
+            continue
+        drop = None
+        c0, c1 = b.get("c0"), b.get("c1")
+        if isinstance(c0, (int, float)) and isinstance(c1, (int, float)):
+            drop = round(c0 - c1, 1)
+        out.append({
+            "at": at,
+            "days": (now - at) // 86400 if at else None,
+            "sec": b.get("sec"),
+            "drop": drop,
+            "manual": bool(b.get("manual")),
+        })
+    return out
+
+
+def calib_hint(vars_):
+    """按当前固件续航推荐放电时长：目标掉 20~25%，但不低于测量门槛、不超过 12 分钟。
+
+    小电池（固件报 20 分钟续航）放满 12 分钟会直接撞到 50% 保护线，
+    所以建议时长必须跟着续航走，不能写死。
+    """
+    runtime = _num((vars_ or {}).get("battery.runtime"))
+    hint = int(round(runtime / 60.0 * 0.25)) if runtime else 10
+    return max(CALIB_MIN_WINDOW, min(CALIB_HINT_MAX, hint))
+
+
 # ---------------------------------------------------------------- 规则引擎
 class Engine:
     def __init__(self):
@@ -648,6 +908,7 @@ class Engine:
         self.conf = load_conf()
         self.events = EventLog(EVENT_PATH)
         self.trend = Trend(DATA_DIR)
+        self._outage_cache = None
         self.vars = {}
         self.connected = False
         self.last_error = ""
@@ -659,6 +920,16 @@ class Engine:
         self.shutdown_reason = ""
         self.battery = {}
         self.battery_at = 0
+        self.maint = {}
+        self.maint_at = 0
+        self.calib = None
+        self.calib_last = None
+        self.calib_grace_until = 0
+        # 标定状态只存在于内存 + 一个提示文件；配置本身从不改动，
+        # 所以进程重启后直接作废是安全的一侧。
+        if _load_calib():
+            _clear_calib()
+            self.events.add("calibrate", "上次容量标定因进程重启中断；断电阈值本就没被改动，已回原值")
 
     # ---- 状态解析 ----
     @staticmethod
@@ -683,10 +954,11 @@ class Engine:
             err = self.last_error
             last_poll = self.last_poll
         st = self.parse(vars_.get("ups.status", ""))
+        wait_eff, calibrating = self.effective_onbatt(conf)
         elapsed = int(time.time() - onbatt_since) if onbatt_since else 0
         remain = None
-        if st["onbatt"] and conf["onbatt_seconds"] > 0:
-            remain = max(0, int(conf["onbatt_seconds"]) - elapsed)
+        if st["onbatt"] and wait_eff > 0:
+            remain = max(0, wait_eff - elapsed)
         return {
             "version": APP_VERSION,
             "connected": connected,
@@ -700,15 +972,40 @@ class Engine:
             "onbatt_elapsed": elapsed,
             "online_for": int(time.time() - online_since) if (online_since and st["online"]) else 0,
             "shutdown_in": remain,
+            "shutdown_threshold": wait_eff,
+            "calibrating": calibrating,
             "shutting_down": self.shutting_down,
             "shutdown_reason": self.shutdown_reason,
             "can_shutdown": can_shutdown(),
             "battery": self.battery,
+            "maintenance": self.maint,
+            "last_outage": self._last_outage(),
+            "calibration": self.calib_status(vars_),
+            "calib_hint": calib_hint(vars_),
+            "calib_grace_left": max(0, int(self.calib_grace_until - time.time()))
+            if self.calib_grace_until else 0,
             "config": {k: v for k, v in conf.items() if k not in ("password",)},
             "has_password": bool(conf.get("password")),
             "events": self.events.recent(80),
             "trend": {"sample_gap": TREND_SAMPLE_GAP, "keep_days": TREND_KEEP_DAYS},
         }
+
+    # ---- 有记录以来最近一次断电（不受趋势图时间跨度影响）----
+    def _last_outage(self):
+        with self.lock:
+            n = len(self.trend.samples)
+            last_t = self.trend.samples[-1].get("t", 0) if self.trend.samples else 0
+            cached = self._outage_cache
+            if cached and cached[0] == (n, last_t):
+                return cached[1]
+        info = None
+        runs = ob_runs(self.trend)
+        if runs:
+            r = runs[-1]
+            info = {"at": r["at"], "seconds": r["seconds"], "ongoing": bool(r["open"])}
+        with self.lock:
+            self._outage_cache = ((n, last_t), info)
+        return info
 
     # ---- 关机 ----
     def do_shutdown(self, reason, dry_run=False):
@@ -731,10 +1028,162 @@ class Engine:
             return False
         return True
 
+    # ---- 容量标定 ----
+    def effective_onbatt(self, conf=None):
+        """标定期间用「抬高后的阈值」，但配置文件一个字都不改。
+
+        这样即使进程被杀、机器重启，也不存在「阈值被留在 20 分钟」的残留风险。
+
+        标定结束（到点 / 撞到电量保护线 / 手动结束）时如果还在放电，
+        再给 CALIB_GRACE 秒宽限：否则原来 5 分钟的阈值早已被超过，
+        程序会在同一轮轮询里立刻关机——标定就变成了「测一下就关机」。
+        """
+        c = self.calib
+        conf = conf if conf is not None else self.conf
+        wait = int(conf.get("onbatt_seconds") or 0)
+        now = time.time()
+        if c and now < int(c.get("until") or 0):
+            return max(wait, int(c.get("target") or 0)), True
+        grace_until = int(self.calib_grace_until or 0)
+        if grace_until > now and self.onbatt_since and wait > 0:
+            elapsed = int(now - self.onbatt_since)
+            left = int(grace_until - now)
+            return elapsed + left, False
+        return wait, False
+
+    def calib_start(self, minutes=CALIB_DEFAULT_MIN):
+        with self.lock:
+            if self.calib:
+                return False, "标定已在进行中"
+            conf = dict(self.conf)
+            if not conf.get("host"):
+                return False, "尚未配置上游地址，先连上 UPS 再标定"
+            try:
+                window = int(minutes)
+            except (TypeError, ValueError):
+                window = CALIB_DEFAULT_MIN
+            window = max(CALIB_MIN_MIN, min(CALIB_MAX_MIN, window))
+            orig = int(conf.get("onbatt_seconds") or 0)
+            now = int(time.time())
+            hint = min(window - 2, calib_hint(self.vars))
+            self.calib = {
+                "started": now,
+                "until": now + window * 60,
+                "window": window,
+                "orig_onbatt": orig,
+                "target": max(orig, window * 60 + CALIB_MARGIN),
+                "hint": hint,
+            }
+            calib = dict(self.calib)
+        self.calib_grace_until = 0
+        _save_calib(calib)
+        self.events.add("calibrate", "开始容量标定：%d 分钟窗口内不因断电计时关机（临时阈值 %d 秒）"
+                        % (calib["window"], calib["target"]))
+        self.battery_at = 0
+        return True, "已进入标定模式，请拔掉 UPS 市电，保持放电约 %d 分钟" % calib["hint"]
+
+    def calib_status(self, vars_=None):
+        with self.lock:
+            c = dict(self.calib) if self.calib else None
+            last = dict(self.calib_last) if self.calib_last else None
+        if not c:
+            return {"active": False, "last": last}
+        v = vars_ if vars_ is not None else self.vars
+        st = self.parse(v.get("ups.status", ""))
+        low = _num(v.get("battery.charge.low")) or 20
+        runs = capacity_runs_since(self.trend, low, c["started"])
+        return {
+            "active": True,
+            "left": max(0, int(c["until"]) - int(time.time())),
+            "window": c["window"],
+            "hint": c.get("hint"),
+            "started": c["started"],
+            "phase": "discharging" if st["onbatt"] else "waiting",
+            "threshold": c["target"],
+            "orig_threshold": c["orig_onbatt"],
+            "charge": _num(v.get("battery.charge")),
+            "floor": CALIB_FLOOR_CHARGE,
+            "sample_ready": bool(runs),
+            "sample": runs[-1] if runs else None,
+        }
+
+    def calib_finish(self, reason, abort=False):
+        with self.lock:
+            c = self.calib
+            if not c:
+                return None
+            self.calib = None
+        _clear_calib()
+        self.battery_at = 0                 # 下次轮询立刻重算电池健康
+        low = _num(self.vars.get("battery.charge.low")) or 20
+        runs = capacity_runs_since(self.trend, low, c["started"])
+        if runs:
+            r = runs[-1]
+            msg = "标定结束（%s）：实测满电到 %d%% 约 %.0f 分钟（放电 %.1f 分钟、电量降 %.0f%%）" % (
+                reason, int(low), r["minutes"], r.get("window_min") or 0, r.get("drop") or 0)
+        elif abort:
+            msg = "标定中止（%s）：本次未采到可用样本" % reason
+        else:
+            msg = "标定结束（%s）：未采到可用样本——放电不足 %d 分钟或电量降幅不足 3%%" % (
+                reason, CALIB_MIN_WINDOW)
+        self.events.add("calibrate", msg)
+        result = {"ok": bool(runs), "message": msg, "at": int(time.time()),
+                  "sample": runs[-1] if runs else None}
+        with self.lock:
+            self.calib_last = result
+        # 结束瞬间还在放电 → 给一段宽限时间，别把「测一下」变成「立刻关机」
+        st = self.parse(self.vars.get("ups.status", ""))
+        if st["onbatt"]:
+            self.calib_grace_until = int(time.time()) + CALIB_GRACE
+            self.events.add("calibrate", "仍在电池供电：%d 秒内插回市电即可，超时按原策略关机"
+                            % CALIB_GRACE)
+            result["grace"] = CALIB_GRACE
+            result["message"] = msg + "。现在还在放电，已宽限 %d 秒，请尽快插回市电" % CALIB_GRACE
+        else:
+            self.calib_grace_until = 0
+        if runs:
+            mark_calibrated(result["at"])      # 标定成功即刷新保养排期
+        self.maint_at = 0
+        self.wake.set()
+        return result
+
+    def calib_check(self, vars_):
+        """每个轮询周期检查：到点结束、低电量/强制关机立即中止。"""
+        c = self.calib
+        if not c:
+            return
+        if time.time() >= int(c.get("until") or 0):
+            self.calib_finish("窗口结束")
+            return
+        st = self.parse(vars_.get("ups.status", ""))
+        if st["fsd"]:
+            self.calib_finish("收到 FSD", abort=True)
+        elif st["low"]:
+            self.calib_finish("UPS 报告低电量", abort=True)
+        else:
+            charge = _num(vars_.get("battery.charge"))
+            if charge is not None and charge <= CALIB_FLOOR_CHARGE:
+                self.calib_finish("电量降到 %d%% 保护线" % charge, abort=True)
+
+    # ---- 电池保养 ----
+    def refresh_maintenance(self, force=False):
+        """60 秒算一次：要遍历 30 天的放电区间，没必要每个快照都重算。"""
+        if not force and time.time() - self.maint_at < 60:
+            return self.maint
+        try:
+            m = maintenance_status(self.trend, self.events)
+        except Exception:
+            return self.maint
+        with self.lock:
+            self.maint = m
+        self.maint_at = time.time()
+        return m
+
     # ---- 单次轮询 ----
     def poll_once(self):
         with self.lock:
             conf = dict(self.conf)
+        self.refresh_maintenance()
         if not conf.get("host"):
             with self.lock:
                 self.connected = False
@@ -776,6 +1225,7 @@ class Engine:
             if was:
                 self.events.add("offline", "与上游断开，不执行任何关机动作：" + str(exc))
             return
+        self.calib_check(vars_)
         self.evaluate()
 
     # ---- 规则判断 ----
@@ -802,6 +1252,7 @@ class Engine:
                 self.events.add("online", "市电恢复，停电计时清零")
             with self.lock:
                 self.onbatt_since = None
+                self.calib_grace_until = 0
             return
 
         if st["onbatt"]:
@@ -817,9 +1268,14 @@ class Engine:
             if st["fsd"] and conf["shutdown_on_fsd"] and conf["auto_shutdown"]:
                 self.do_shutdown("上游要求强制关机（FSD）", dry_run=drill)
                 return
-            wait = int(conf["onbatt_seconds"] or 0)
+            wait, _ = self.effective_onbatt(conf)
             if wait > 0 and elapsed >= wait and conf["auto_shutdown"]:
-                self.do_shutdown("断电已持续 %d 秒" % wait, dry_run=drill)
+                reason = "断电已持续 %d 秒" % wait
+                grace = int(self.calib_grace_until or 0)
+                if grace and now >= grace:
+                    reason = "标定结束后 %d 秒内未恢复市电" % CALIB_GRACE
+                    self.calib_grace_until = 0
+                self.do_shutdown(reason, dry_run=drill)
 
     # ---- 后台线程 ----
     def loop(self):
@@ -1071,6 +1527,31 @@ class Handler(BaseHTTPRequestHandler):
                 ENGINE.events.add("test", "测试连接失败：%s" % exc)
                 return self._json({"ok": False, "error": str(exc)})
 
+        if path == "/api/calibrate":
+            if body.get("action") == "stop":
+                res = ENGINE.calib_finish("手动结束")
+                return self._json({"ok": True, "result": res,
+                                   "calibration": ENGINE.calib_status()})
+            ok, msg = ENGINE.calib_start(body.get("minutes") or CALIB_DEFAULT_MIN)
+            if not ok:
+                return self._json({"ok": False, "error": msg}, 400)
+            return self._json({"ok": True, "message": msg,
+                               "calibration": ENGINE.calib_status()})
+
+        if path == "/api/maint":
+            action = str(body.get("action") or "scan")
+            if action == "done":
+                state = _load_maint()
+                at = int(time.time())
+                state["last_short_at"] = at
+                brief = list(state.get("brief") or [])
+                brief.append({"at": at, "sec": None, "manual": True})
+                state["brief"] = brief[-MAINT_KEEP_RECORDS:]
+                _save_maint(state)
+                ENGINE.events.add("maint", "手动记录：已完成一次电池短测")
+            ENGINE.maint_at = 0
+            return self._json({"ok": True, "maintenance": ENGINE.refresh_maintenance(force=True)})
+
         if path == "/api/drill":
             scenario = body.get("scenario", "ob")
             minutes = max(0, min(1440, int(body.get("minutes") or 5)))
@@ -1079,11 +1560,12 @@ class Handler(BaseHTTPRequestHandler):
             if not conf.get("auto_shutdown"):
                 steps.append("当前「自动关机」是关闭的，任何场景都不会真的关机。")
             if scenario == "ob":
-                wait = int(conf.get("onbatt_seconds") or 0)
+                wait, calibrating = ENGINE.effective_onbatt()
                 steps.append("断电持续 %d 分钟 → %s" % (
                     minutes,
-                    "达到 %d 秒阈值，将触发关机" % wait if wait and minutes * 60 >= wait
-                    else "未达到 %d 秒阈值，不关机" % wait if wait else "阈值为 0，只靠 LB/FSD 兜底"))
+                    ("标定期间临时阈值 %d 秒，" % wait if calibrating else "")
+                    + ("达到 %d 秒阈值，将触发关机" % wait if wait and minutes * 60 >= wait
+                       else "未达到 %d 秒阈值，不关机" % wait if wait else "阈值为 0，只靠 LB/FSD 兜底")))
             elif scenario == "lb":
                 steps.append("收到 LB（低电量）→ %s" % (
                     "启用，将立即关机" if conf.get("shutdown_on_lb") else "未启用，不会因此关机"))

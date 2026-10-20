@@ -4,6 +4,7 @@
     python tools/gen_preview.py calib      # 展示「容量标定进行中」
     python tools/gen_preview.py maint      # 展示「该做电池保养了」
     python tools/gen_preview.py live       # 展示「拔电后自动进入放电计时」
+    python tools/gen_preview.py charge     # 展示「插回市电充电中」（UPS 只报 OL，不报 CHRG）
 """
 import os
 import sys
@@ -159,6 +160,18 @@ window.fetch = function(url){
 """ % {"battery": battery, "maint": maint, "mode": mode, "ver": APP_VER}
 
 
+def charging(demo, charge=96):
+    """插回市电、正在充电，但 UPS 只上报 OL（不上报 CHRG）——这是家用型号的常见行为。"""
+    demo = demo.replace('status:{raw:"OL CHRG", online:true, onbatt:false, low:false, fsd:false}',
+                        'status:{raw:"OL", online:true, onbatt:false, low:false, fsd:false}')
+    demo = demo.replace('status_text:"OL（市电在线） CHRG（充电中）"',
+                        'status_text:"OL（市电在线）"')
+    demo = demo.replace('"ups.status":"OL CHRG"', '"ups.status":"OL"')
+    demo = demo.replace('"battery.charge":"100"', '"battery.charge":"%d"' % charge)
+    demo = demo.replace('metrics:{charge:100', 'metrics:{charge:%d' % charge)
+    return demo
+
+
 def onbatt(demo, elapsed, shutdown_in, charge=None):
     """把样例数据改成「正在放电」。"""
     demo = demo.replace('status:{raw:"OL CHRG", online:true, onbatt:false, low:false, fsd:false}',
@@ -185,6 +198,9 @@ if mode == "calib":
 elif mode == "live":
     # 只是拔掉市电 64 秒：不点任何按钮，卡片自己进入「放电中 · 短测」
     DEMO = onbatt(DEMO, 64, 236, charge=99)
+elif mode == "charge":
+    # 断电测试后插回市电：电量还没充满，UPS 只报 OL，界面仍应显示「充电中」
+    DEMO = charging(DEMO, 96)
 
 src = open(src_path, encoding="utf-8").read()
 marker = "<script>\nvar state = null;"

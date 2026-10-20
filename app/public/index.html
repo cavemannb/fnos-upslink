@@ -617,16 +617,28 @@ function fmtSpan(sec){
   return Math.round(sec/60) + ' 分';
 }
 
-// 电池当前阶段：放电 > 充电 > 充满，空字符串表示不值得提示
+// 电池当前阶段：放电 > 充电 > 充满，null 表示不值得提示
+// 注意：不少 UPS（含 SANTAK/Eaton 家用型号）插回市电后并不上报 CHRG，
+// 只给一个 OL。所以市电在线 + 电量未满一律按「充电中」显示，否则这个位置会是空白。
 function chargePhase(s, m){
   var raw = String((s.status && s.status.raw) || '');
   var onbatt = !!(s.status && s.status.onbatt);
-  if (s.calibrating || raw.indexOf('CAL') >= 0) return {t:'标定放电中', c:'warn'};
-  if (onbatt || raw.indexOf('DISCHRG') >= 0) return {t:'放电中', c:'warn'};
-  if (raw.indexOf('CHRG') >= 0){
-    return (isNum(m.charge) && m.charge >= 99) ? {t:'已充满', c:'ok'} : {t:'充电中', c:'acc'};
+  var online = !!(s.status && s.status.online);
+  if (s.calibrating || raw.indexOf('CAL') >= 0) {
+    return {t:'标定放电中', c:'warn', why:'容量标定进行中'};
   }
-  if (isNum(m.charge) && m.charge >= 99) return {t:'已充满', c:''};
+  if (onbatt || raw.indexOf('DISCHRG') >= 0) {
+    return {t:'放电中', c:'warn', why:'UPS 上报 OB（电池供电）'};
+  }
+  var full = isNum(m.charge) && m.charge >= 100;
+  if (raw.indexOf('CHRG') >= 0) {
+    // UPS 明确说在充，就信它——满电后的浮充补电也算充电中
+    return {t:'充电中', c:'acc', why:'UPS 上报 CHRG（充电中）'};
+  }
+  if (full) return {t:'已充满', c:'ok', why:'电量已满，市电浮充待机'};
+  if (online && isNum(m.charge)) {
+    return {t:'充电中', c:'acc', why:'市电在线且电量未满；UPS 未上报 CHRG，按充电推断'};
+  }
   return null;
 }
 
@@ -720,6 +732,7 @@ function render(s){
   var cs = $('mChargeSub');
   cs.textContent = ph ? ph.t : '';
   cs.className = 'sub' + (ph && ph.c ? ' ' + ph.c : '');
+  cs.title = ph ? (ph.why || '') : '';
 
   // 续航下方：按真实放电斜率折算的当前负载续航，比 UPS 自带估算更贴合实际
   var mrt = measuredRuntime(s, m);

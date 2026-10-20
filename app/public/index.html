@@ -691,16 +691,13 @@ function chargePhase(s, m){
   return null;
 }
 
-// 实测续航：measured_minutes 是满电跑到低压阈值的分钟数，按当前电量线性折算
+// 实测续航：把 UPS 自报的续航按实测容量衰减打折，口径与上面的数字完全一致
+// （都是「现在这个负载还能撑多久」），所以两个数可以直接对比。
+// 衰减不足 2% 时不展示——折出来的数和上面一模一样，多说一句反而添噪。
 function measuredRuntime(s, m){
   var b = s.battery || {};
-  if (!isNum(b.measured_minutes) || !isNum(m.charge)) return null;
-  var low = isNum(b.charge_low) ? b.charge_low : 20;
-  var span = 100 - low;
-  if (span <= 0) return null;
-  var left = m.charge - low;
-  if (left <= 0) return 0;
-  return Math.round(b.measured_minutes * left / span * 60);
+  if (!isNum(m.runtime) || !isNum(b.decay_pct) || b.decay_pct < 2) return null;
+  return Math.round(m.runtime * (1 - b.decay_pct / 100));
 }
 
 function fmtClock(ts){
@@ -783,15 +780,20 @@ function render(s){
   cs.className = 'sub' + (ph && ph.c ? ' ' + ph.c : '');
   cs.title = ph ? (ph.why || '') : '';
 
-  // 续航下方：按真实放电斜率折算的当前负载续航，比 UPS 自带估算更贴合实际
+  // 续航下方：UPS 自报续航按实测衰减打折。只在这个数明显更短时才出现，
+  // 并用警告色 + ↓ 标记出来——它意味着「UPS 那个数字你撑不到」
   var mrt = measuredRuntime(s, m);
   var rs = $('mRuntimeSub');
   if (mrt === null){
     rs.textContent = '';
+    rs.className = 'sub';
     rs.title = '';
   } else {
-    rs.textContent = '实测 ' + fmtSpan(mrt);
-    rs.title = '按 ' + ((s.battery && s.battery.samples) || 1) + ' 次真实放电的下降斜率、当前负载折算';
+    var bt = s.battery || {};
+    rs.className = 'sub warn';
+    rs.textContent = '↓实测 ' + fmtSpan(mrt);
+    rs.title = 'UPS 自报 ' + fmtShort(m.runtime) + ' × (1 − 实测衰减 ' + bt.decay_pct +
+      '%) = ' + fmtSpan(mrt) + '；衰减来自 ' + (bt.samples || 1) + ' 次真实放电';
   }
 
   var policy;
@@ -903,19 +905,30 @@ function renderBatteryHealth(b){
                    : '未知';
   box.innerHTML = level === 'ok' ? '' : '<div class="bh-msg">' + esc(b.message || '') + '</div>';
 
-  // 容量证据：实测 vs 新电基线 vs 衰减
+  // 容量证据：实测 vs 新电基线 vs 衰减。
+  // 口径必须写在数字旁边——这两个时长都是「满电放电到低压阈值」的，不是到 0%，
+  // 不写清楚会让人拿它去和总览卡的续航对不上账。
+  var low = isNum(b.charge_low) ? b.charge_low : 20;
   var hasMeasured = isNum(b.measured_minutes);
   var st = [];
-  st.push('<div><span class="k">实测满电</span><b>' +
+  st.push('<div><span class="k">实测满电 → ' + low + '%</span><b>' +
     (hasMeasured ? fmtShort(Math.round(b.measured_minutes * 60)) : '—') + '</b></div>');
-  st.push('<div><span class="k">新电基线</span><b>' +
+  st.push('<div><span class="k">新电基线 → ' + low + '%</span><b>' +
     (isNum(b.baseline_minutes) ? fmtShort(Math.round(b.baseline_minutes * 60)) : '—') + '</b></div>');
   st.push('<div><span class="k">衰减</span><b>' +
     (isNum(b.decay_pct) ? b.decay_pct + '<i>%</i>' : '—') + '</b></div>');
+  var note;
+  if (hasMeasured){
+    note = '满电放电到低压 ' + low + '% 的实测时长';
+    if (isNum(b.measured_minutes0))
+      note += '（外推到 0% 约 ' + fmtShort(Math.round(b.measured_minutes0 * 60)) + '，仅供参考）';
+    note += ' · ' + (b.samples || 1) + ' 次样本';
+    if (isNum(b.measured_load)) note += ' · 负载 ' + b.measured_load + '%';
+  } else {
+    note = '还没有放电样本：等一次 8 分钟以上的真实断电，或点右侧「容量标定」造一个';
+  }
   $('cBatStats').innerHTML = st.join('') +
-    '<div class="bstat-note" style="grid-column:1/-1">' + (hasMeasured
-      ? '按 ' + (b.samples || 1) + ' 次放电样本、当前负载折算；用于看趋势，不是精确续航'
-      : '还没有放电样本：等一次 8 分钟以上的真实断电，或点右侧「容量标定」造一个') + '</div>';
+    '<div class="bstat-note" style="grid-column:1/-1">' + note + '</div>';
 
   // 寿命进度：投运 → 建议更换
   var life = $('cBatLife');
@@ -1139,7 +1152,9 @@ function maintSheetBody(){
     : ' · 还没有标定过';
   var cap = [];
   if (isNum(b.measured_minutes)){
-    cap.push('<span>实测满电 <b>' + fmtShort(Math.round(b.measured_minutes * 60)) + '</b></span>');
+    var capLow = isNum(b.charge_low) ? b.charge_low : 20;
+    cap.push('<span>实测满电（到 ' + capLow + '%）<b>' +
+      fmtShort(Math.round(b.measured_minutes * 60)) + '</b></span>');
     if (isNum(b.baseline_minutes))
       cap.push('<span>新电 <b>' + fmtShort(Math.round(b.baseline_minutes * 60)) + '</b></span>');
     if (isNum(b.decay_pct) && b.decay_pct > 0)

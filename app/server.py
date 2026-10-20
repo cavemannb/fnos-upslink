@@ -26,7 +26,7 @@ import traceback
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from urllib.parse import parse_qs, urlparse
 
-APP_VERSION = "1.9.6"
+APP_VERSION = "1.9.7"
 PORT = int(os.environ.get("UPSLINK_PORT") or os.environ.get("TRIM_SERVICE_PORT") or "8099")
 DATA_DIR = os.environ.get("TRIM_PKGVAR") or os.environ.get("UPSLINK_DATA") or "/opt/upslink/var"
 CONF_PATH = os.path.join(DATA_DIR, "config.json")
@@ -557,7 +557,8 @@ def measure_capacity(trend, charge_low=20):
     """从历史断电区间反推电池可用时长，比固件报的 runtime 更贴合真实老化。
 
     只用「时长够、电量真的掉了」的区间——短于 8 分钟或掉电不足 3% 的样本
-    噪声太大，直接丢弃。返回值按当前负载归一化由调用方完成。
+    噪声太大，直接丢弃。返回的 minutes 是「满电放电到 low 阈值」的时长，
+    minutes0 是继续线性外推到 0% 的时长（仅作参考，低压以下掉电并不线性）。
     """
     low = charge_low if charge_low is not None else 20
     out = []
@@ -572,12 +573,15 @@ def measure_capacity(trend, charge_low=20):
         if drop < 3 or c0 <= low:
             continue
         full = (c0 - low) * minutes / drop           # 当时从 c0 掉到 low 需要多久
+        zero = c0 * minutes / drop                   # 线性外推到 0%
         out.append({
             "at": r["at"],
             "minutes": round(full, 1),
+            "minutes0": round(zero, 1),
             "window_min": round(minutes, 1),
             "drop": round(drop, 1),
             "load": round(r["load"], 1) if r["load"] else None,
+            "open": bool(r.get("open")),
         })
     return out[-5:]
 
@@ -644,29 +648,50 @@ def battery_health(conf, vars_, trend, events=None):
         level, message = "ok", "已使用 %d 天，距建议更换还有 %d 天。" % (age_days, days_left)
 
     # ---- 实测容量（相对基线）----
+    # 口径：满电放电到低压阈值（默认 20%）的时长，minutes0 是外推到 0% 的参考值。
+    # 稳定性：这里刻意不再用「当前负载」归一化——负载每 5 秒都在跳，同一批样本
+    # 会被折算成不同的数字，表现为「每隔几次刷新实测满电就变一个值」。改为把每个
+    # 样本折算到这批样本的平均负载（ref_load），只在样本集合真的变了时才变。
+    # 另外只认已经恢复市电的完整放电区间：正在放电的那一段每分钟都在变长，
+    # 混进中位数会让数字来回跳。
     charge_low = _num(vars_.get("battery.charge.low")) or 20
-    load_now = _num(vars_.get("ups.load"))
-    runs = measure_capacity(trend, charge_low)
-    measured = None
+    runs = [r for r in measure_capacity(trend, charge_low) if not r.get("open")]
+    measured = measured0 = ref_load = cap_now = None
     if runs:
-        vals = sorted(r["minutes"] for r in runs)
-        median = vals[(len(vals) - 1) // 2]     # 取偏保守的一侧，宁可早提醒
-        ref_load = runs[-1].get("load")
-        if ref_load and load_now:
-            measured = round(median * ref_load / float(load_now), 1)
+        loads = [r["load"] for r in runs if r.get("load")]
+        ref_load = round(sum(loads) / float(len(loads)), 1) if loads else None
+        # 「时长 × 负载」正比于电池可用能量，是和负载无关的比较基准
+        caps = sorted(r["minutes"] * (r.get("load") or ref_load or 1) for r in runs)
+        caps0 = sorted(r["minutes0"] * (r.get("load") or ref_load or 1) for r in runs)
+        cap_now = caps[(len(caps) - 1) // 2]        # 取偏保守的一侧，宁可早提醒
+        med0 = caps0[(len(caps0) - 1) // 2]
+        if ref_load:
+            measured = round(cap_now / ref_load, 1)
+            measured0 = round(med0 / ref_load, 1)
         else:
-            measured = round(median, 1)
+            measured, measured0, cap_now = round(cap_now, 1), round(med0, 1), None
 
     baseline = state.get("baseline_minutes")
+    base_load = state.get("baseline_load")
     if measured and not baseline:
         state["baseline_minutes"] = measured
+        state["baseline_load"] = ref_load
+        state["baseline_minutes0"] = measured0
         state["baseline_at"] = int(time.time())
-        baseline = measured
+        baseline, base_load = measured, ref_load
         if events:
-            events.add("battery", "已记录电池基线：满电到 %d%% 约 %.0f 分钟（当前负载）" % (int(charge_low), measured))
+            events.add("battery", "已记录电池基线：满电到 %d%% 约 %.0f 分钟（负载 %s%%）" % (
+                int(charge_low), measured, ref_load if ref_load else "未知"))
+    elif baseline and base_load is None and ref_load:
+        # 老版本存下的基线没有记负载：按同负载处理，后续比较才有意义
+        state["baseline_load"] = base_load = ref_load
     decay = None
     if measured and baseline:
-        decay = round(max(0.0, (baseline - measured) / float(baseline)) * 100, 1)
+        if cap_now and base_load:
+            cap_base = baseline * base_load
+            decay = round(max(0.0, (cap_base - cap_now) / float(cap_base)) * 100, 1)
+        else:
+            decay = round(max(0.0, (baseline - measured) / float(baseline)) * 100, 1)
 
     # 容量衰减比时间更可信：真的测出来掉了 30%，就不等日期了
     if decay is not None and decay >= 30 and level in ("ok", "warn", "unknown"):
@@ -706,7 +731,11 @@ def battery_health(conf, vars_, trend, events=None):
         "replace_on": replace_on.isoformat() if replace_on else None,
         "days_left": days_left,
         "measured_minutes": measured,
+        "measured_minutes0": measured0,
+        "measured_load": ref_load,
         "baseline_minutes": baseline,
+        "baseline_minutes0": state.get("baseline_minutes0"),
+        "baseline_load": base_load,
         "decay_pct": decay,
         "samples": len(runs),
         "last_outage_at": runs[-1]["at"] if runs else None,

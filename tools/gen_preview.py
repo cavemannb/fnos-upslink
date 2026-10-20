@@ -5,6 +5,7 @@
     python tools/gen_preview.py maint      # 展示「该做电池保养了」
     python tools/gen_preview.py live       # 展示「拔电后自动进入放电计时」
     python tools/gen_preview.py charge     # 展示「插回市电充电中」（UPS 只报 OL，不报 CHRG）
+    python tools/gen_preview.py worn       # 展示「实测续航比自报续航短」（衰减 12%）
 """
 import os
 import sys
@@ -29,12 +30,20 @@ mode = (sys.argv[1] if len(sys.argv) > 1 else "ok").lower()
 BATTERY_OK = """{level:"ok", message:"已使用 4 天，距建议更换还有 727 天。",
     installed:"2026-10-15", age_days:4, life_months:24, replace_on:"2028-10-15", days_left:727,
     measured_minutes:42, baseline_minutes:42, decay_pct:0, samples:1, last_outage_at:NOW-5400,
+    measured_minutes0:52.5, baseline_minutes0:52.5, measured_load:11, baseline_load:11,
     charge_low:20, test_date:"2026/10/12", test_age_days:7, charge_stuck_days:0}"""
 
 BATTERY_DUE = """{level:"due", message:"实测容量比基线下降 38%（42 → 26 分钟），电池已明显衰减，建议更换。",
     installed:"2024-06-10", age_days:861, life_months:24, replace_on:"2026-06-10", days_left:-131,
     measured_minutes:26, baseline_minutes:42, decay_pct:38.1, samples:4, last_outage_at:NOW-86400,
+    measured_minutes0:32.5, baseline_minutes0:52.5, measured_load:11, baseline_load:11,
     charge_low:20, test_date:"2026/03/02", test_age_days:231, charge_stuck_days:0}"""
+
+BATTERY_WORN = """{level:"ok", message:"已使用 4 天，距建议更换还有 727 天。",
+    installed:"2026-10-15", age_days:4, life_months:24, replace_on:"2028-10-15", days_left:727,
+    measured_minutes:37, baseline_minutes:42, decay_pct:11.9, samples:3, last_outage_at:NOW-5400,
+    measured_minutes0:46.3, baseline_minutes0:52.5, measured_load:11, baseline_load:11,
+    charge_low:20, test_date:"2026/10/12", test_age_days:7, charge_stuck_days:0}"""
 
 MAINT_OK = """{level:"ok", message:"短测还有 12 天，标定还有 141 天。",
     next_in_days:12,
@@ -56,7 +65,12 @@ MAINT_DUE = """{level:"due", message:"短测已过计划日期 17 天（建议�
     recent:[{at:NOW-4060800, days:47, sec:162, drop:2.0, manual:false, long:false},
             {at:NOW-6739200, days:78, sec:95, drop:1.0, manual:false, long:false}]}"""
 
-battery = BATTERY_DUE if mode == "due" else BATTERY_OK
+if mode == "due":
+    battery = BATTERY_DUE
+elif mode == "worn":
+    battery = BATTERY_WORN
+else:
+    battery = BATTERY_OK
 maint = MAINT_DUE if mode in ("maint", "due") else MAINT_OK
 
 DEMO = """<script>
@@ -100,7 +114,7 @@ var DEMO_STATE = {
     {ts:NOW-5400, kind:"online", msg:"市电恢复，停电计时清零"},
     {ts:NOW-5600, kind:"onbatt", msg:"开始使用电池供电"},
     {ts:NOW-5601, kind:"status", msg:"状态变化：OL（市电在线） → OB（电池供电） DISCHRG（放电中）"},
-    {ts:NOW-86400, kind:"battery", msg:"已记录电池基线：满电到 20%% 约 42 分钟（当前负载）"},
+    {ts:NOW-86400, kind:"battery", msg:"已记录电池基线：满电到 20%% 约 42 分钟（负载 11%%）"},
     {ts:NOW-8040, kind:"start", msg:"UPSLink %(ver)s 启动，监听 0.0.0.0:8099"}
     ];
     // 再补 40 条历史状态事件：让事件卡的「显示更早的」分页有东西可翻
@@ -239,6 +253,11 @@ if mode in ("maint", "live"):
 if mode == "maint":
     # 预览页专用：直接把这层弹窗打开，方便截图核对排版
     src = src.replace("</body>", "<script>setTimeout(openMaintSheet, 400);</script></body>")
+    # 自渲染截图（SVG foreignObject）会丢 fixed 图层：预览里把弹窗改回普通文档流
+    src = src.replace("</head>",
+        "<style>.sheet-wrap{position:static;display:flex;padding:0;background:transparent}"
+        ".sheet-wrap .sheet-mask{display:none}"
+        ".sheet{max-height:none;animation:none;margin:0 auto}</style></head>")
 
 src = src.replace("<title>UPSLink · UPS 联动</title>",
                   "<title>UPSLink · 界面预览（样例数据）</title>")

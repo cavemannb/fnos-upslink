@@ -278,6 +278,20 @@ h1{font-size:16px;font-weight:600;margin:0;letter-spacing:-.2px}
 @keyframes sheetIn{from{opacity:0;transform:translateY(10px) scale(.985)}to{opacity:1;transform:none}}
 @keyframes sheetUp{from{transform:translateY(36px)}to{transform:none}}
 @keyframes fadeIn{from{opacity:0}to{opacity:1}}
+/* 图标：只做扫读锚点，统一 13-15px、currentColor，明暗主题自动跟随 */
+.ic{flex:none;vertical-align:-2px}
+.st{display:flex;align-items:center;gap:7px}
+.st > .ic{color:var(--accent)}
+.ov-nums .k{display:flex;align-items:center;gap:5px}
+.ov-nums .k .ic{color:var(--accent)}
+details.sec summary .ic{color:var(--accent)}
+.ttl .ic{color:var(--accent);vertical-align:-2.5px;margin-right:2px}
+.tag{display:inline-flex;align-items:center;gap:4px}
+.tag .ic{vertical-align:0}
+.chk .s .ic{vertical-align:-2.5px}
+.sheet-ft button{display:inline-flex;align-items:center;justify-content:center;gap:6px}
+.bstat{grid-template-columns:repeat(2,minmax(0,1fr))}
+.bstat .k{white-space:nowrap}
 @media (max-width:640px){
   .sheet-wrap{align-items:flex-end;padding:0}
   .sheet{max-width:none;max-height:88vh;border-radius:16px 16px 0 0;animation:sheetUp .22s cubic-bezier(.2,.8,.3,1)}
@@ -398,7 +412,26 @@ footer{margin-top:16px;color:var(--muted);font-size:var(--fs-2xs);line-height:1.
 </style>
 </head>
 <body>
-<div class="wrap">
+
+<!-- 内联图标 sprite：线性、stroke 1.7、currentColor，明暗主题自动跟随；无外部资源 -->
+<svg style="display:none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
+  <symbol id="i-plug" viewBox="0 0 24 24"><path d="M9 7V3M15 7V3M7 7h10v4a5 5 0 0 1-10 0V7zM12 16v5" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"/></symbol>
+  <symbol id="i-batt" viewBox="0 0 24 24"><rect x="2.5" y="8" width="16" height="8" rx="2" fill="none" stroke="currentColor" stroke-width="1.7"/><path d="M21 10.5v3" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"/><rect x="4.5" y="10" width="7" height="4" rx="1" fill="currentColor"/></symbol>
+  <symbol id="i-clock" viewBox="0 0 24 24"><circle cx="12" cy="12" r="8.5" fill="none" stroke="currentColor" stroke-width="1.7"/><path d="M12 7.5V12l3 2" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"/></symbol>
+  <symbol id="i-gauge" viewBox="0 0 24 24"><path d="M4 16a8 8 0 0 1 16 0" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"/><path d="M12 16l4-5" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"/><circle cx="12" cy="16" r="1.4" fill="currentColor"/></symbol>
+  <symbol id="i-bolt" viewBox="0 0 24 24"><path d="M13 2L5 13h5l-1 9 8-11h-5l1-9z" fill="currentColor"/></symbol>
+  <symbol id="i-chart" viewBox="0 0 24 24"><path d="M3.5 4v15.5H21" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"/><path d="M7 15l4-5 3.5 3 5-6.5" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"/></symbol>
+  <symbol id="i-list" viewBox="0 0 24 24"><path d="M8.5 6h12M8.5 12h12M8.5 18h12" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"/><circle cx="4" cy="6" r="1.3" fill="currentColor"/><circle cx="4" cy="12" r="1.3" fill="currentColor"/><circle cx="4" cy="18" r="1.3" fill="currentColor"/></symbol>
+  <symbol id="i-shield" viewBox="0 0 24 24"><path d="M12 3l7 2.8v5.6c0 4.2-3 7.4-7 9.4-4-2-7-5.2-7-9.4V5.8L12 3z" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linejoin="round"/><path d="M9 11.5l2.2 2.2L15.5 9" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"/></symbol>
+  <symbol id="i-check" viewBox="0 0 24 24"><path d="M5 12.5l4.5 4.5L19 7.5" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></symbol>
+  <symbol id="i-alert" viewBox="0 0 24 24"><path d="M12 3.5L22 20H2L12 3.5z" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linejoin="round"/><path d="M12 9.5v4.5" stroke="currentColor" stroke-width="1.9" stroke-linecap="round"/><circle cx="12" cy="17" r="1.2" fill="currentColor"/></symbol>
+  <symbol id="i-x" viewBox="0 0 24 24"><path d="M6 6l12 12M18 6L6 18" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></symbol>
+  <symbol id="i-cal" viewBox="0 0 24 24"><rect x="3.5" y="5" width="17" height="15.5" rx="2" fill="none" stroke="currentColor" stroke-width="1.7"/><path d="M3.5 9.5h17M8 3v4M16 3v4" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"/></symbol>
+  <symbol id="i-cfg" viewBox="0 0 24 24"><circle cx="12" cy="12" r="3.2" fill="none" stroke="currentColor" stroke-width="1.7"/><path d="M12 2.8v3M12 18.2v3M2.8 12h3M18.2 12h3M5.5 5.5l2.1 2.1M16.4 16.4l2.1 2.1M18.5 5.5l-2.1 2.1M7.6 16.4l-2.1 2.1" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"/></symbol>
+  <symbol id="i-dev" viewBox="0 0 24 24"><rect x="7" y="7" width="10" height="10" rx="2" fill="none" stroke="currentColor" stroke-width="1.7"/><path d="M10 2.5V7M14 2.5V7M10 17v4.5M14 17v4.5M2.5 10H7M2.5 14H7M17 10h4.5M17 14h4.5" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"/></symbol>
+  <symbol id="i-wrench" viewBox="0 0 24 24"><path d="M14.5 6.5a4.5 4.5 0 0 1 6-4.2l-3.2 3.2 1.2 3 3 1.2 3.2-3.2" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" transform="scale(0.78) translate(1 1)"/><path d="M12.5 9.5L4 18a2.1 2.1 0 0 0 3 3l8.5-8.5" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"/></symbol>
+</svg>
+  <div class="wrap">
   <header>
     <div>
       <h1>UPS 联动</h1>
@@ -420,11 +453,11 @@ footer{margin-top:16px;color:var(--muted);font-size:var(--fs-2xs);line-height:1.
         </div>
       </div>
       <div class="ov-nums">
-        <div><div class="k">电量</div><div class="n"><span id="mCharge">—</span><i>%</i></div>
+        <div><div class="k"><svg class="ic" width="13" height="13"><use href="#i-batt"/></svg>电量</div><div class="n"><span id="mCharge">—</span><i>%</i></div>
           <div class="sub" id="mChargeSub"></div></div>
-        <div><div class="k">续航</div><div class="n"><span id="mRuntime">—</span></div>
+        <div><div class="k"><svg class="ic" width="13" height="13"><use href="#i-clock"/></svg>续航</div><div class="n"><span id="mRuntime">—</span></div>
           <div class="sub" id="mRuntimeSub"></div></div>
-        <div><div class="k">负载</div><div class="n"><span id="mLoad">—</span><i>%</i></div>
+        <div><div class="k"><svg class="ic" width="13" height="13"><use href="#i-gauge"/></svg>负载</div><div class="n"><span id="mLoad">—</span><i>%</i></div>
           <div class="sub" id="mLoadSub"></div></div>
       </div>
     </div>
@@ -454,7 +487,7 @@ footer{margin-top:16px;color:var(--muted);font-size:var(--fs-2xs);line-height:1.
 
   <div class="panel">
     <div class="tr-hd">
-      <span class="ttl">电量与负载</span>
+      <span class="ttl"><svg class="ic" width="15" height="15"><use href="#i-chart"/></svg>电量与负载</span>
       <span class="legend">
         <span><i style="background:var(--charge)"></i>电量</span>
         <span><i style="background:var(--loadc)"></i>负载</span>
@@ -474,12 +507,12 @@ footer{margin-top:16px;color:var(--muted);font-size:var(--fs-2xs);line-height:1.
   </div>
 
   <details class="sec">
-    <summary><span class="caret"></span>设备与驱动<span class="sum" id="devSum">—</span></summary>
+    <summary><span class="caret"></span><svg class="ic" width="15" height="15"><use href="#i-dev"/></svg>设备与驱动<span class="sum" id="devSum">—</span></summary>
     <div class="body"><div id="devBody" class="first"></div></div>
   </details>
 
   <details class="sec">
-    <summary><span class="caret"></span>全部 NUT 变量<span class="sum" id="varSum">—</span></summary>
+    <summary><span class="caret"></span><svg class="ic" width="15" height="15"><use href="#i-list"/></svg>全部 NUT 变量<span class="sum" id="varSum">—</span></summary>
     <div class="body">
       <div class="vars first" id="varList"></div>
       <div class="actions">
@@ -490,7 +523,7 @@ footer{margin-top:16px;color:var(--muted);font-size:var(--fs-2xs);line-height:1.
   </details>
 
   <details class="sec">
-    <summary><span class="caret"></span>关机策略与配置<span class="sum" id="cfgSum">—</span></summary>
+    <summary><span class="caret"></span><svg class="ic" width="15" height="15"><use href="#i-cfg"/></svg>关机策略与配置<span class="sum" id="cfgSum">—</span></summary>
     <div class="body">
       <h2>上游（NUT Server）</h2>
       <div class="row">
@@ -528,7 +561,7 @@ footer{margin-top:16px;color:var(--muted);font-size:var(--fs-2xs);line-height:1.
   </details>
 
   <details class="sec" id="chkSec">
-    <summary><span class="caret"></span>健康自检<span class="sum" id="chkSum">系统升级后打开本页即可确认</span></summary>
+    <summary><span class="caret"></span><svg class="ic" width="15" height="15"><use href="#i-shield"/></svg>健康自检<span class="sum" id="chkSum">系统升级后打开本页即可确认</span></summary>
     <div class="body">
       <div id="selfcheck" class="first"></div>
       <div class="actions">
@@ -540,7 +573,7 @@ footer{margin-top:16px;color:var(--muted);font-size:var(--fs-2xs);line-height:1.
 
   <div class="panel" style="margin-top:12px">
     <div class="ev-hd">
-      <span class="ttl">事件</span>
+      <span class="ttl"><svg class="ic" width="15" height="15"><use href="#i-list"/></svg>事件</span>
       <button class="seg on" data-ev="all">全部</button>
       <button class="seg" data-ev="power">断电</button>
       <button class="seg" data-ev="status">状态</button>
@@ -608,6 +641,12 @@ var KIND_ZH = {
   onbatt:'断电', online:'来电', shutdown:'关机', repair:'修复', error:'错误', offline:'离线',
   calibrate:'标定', maint:'保养'
 };
+// 事件标签的小图标（status 类事件量最大且语义重复，刻意不加，避免整列都是图标）
+var KIND_IC = {
+  onbatt:'bolt', shutdown:'bolt', online:'plug', offline:'x',
+  test:'clock', drill:'bolt', calibrate:'gauge', maint:'cal',
+  start:'cfg', config:'cfg', repair:'wrench', error:'alert'
+};
 var EV_FILTER = {
   all: null,
   power: ['onbatt','online','shutdown','offline'],
@@ -617,6 +656,12 @@ var EV_FILTER = {
 };
 
 function $(id){ return document.getElementById(id); }
+
+// 内联图标：引用 body 顶部的 sprite，currentColor 跟随文字颜色
+function ic(name, size){
+  var s = size || 13;
+  return '<svg class="ic" width="' + s + '" height="' + s + '" aria-hidden="true"><use href="#i-' + name + '"/></svg>';
+}
 
 function statusZh(raw){
   var parts = String(raw || '').trim().split(/\s+/).filter(Boolean), out = [], seen = {};
@@ -755,7 +800,11 @@ function render(s){
   if (!s.connected){ dot.classList.add('off'); st = '未连接上游'; }
   else if (s.status.onbatt){ dot.classList.add('batt'); st = '电池供电'; }
   else { dot.classList.add('on'); st = '市电在线'; }
-  $('stText').textContent = st;
+  // 状态词前的线性图标：插头=市电、闪电=放电、断开=离线；颜色随状态（绿/琥珀/灰）
+  var stIcon = s.connected ? (s.status.onbatt ? 'bolt' : 'plug') : 'x';
+  var stColor = s.connected ? (s.status.onbatt ? 'var(--warn)' : 'var(--ok)') : 'var(--muted)';
+  $('stText').innerHTML = '<svg class="ic" width="15" height="15" aria-hidden="true" style="color:' +
+    stColor + '"><use href="#i-' + stIcon + '"/></svg><span>' + esc(st) + '</span>';
 
   // 原码（如 OL CHRG）是翻译的来源，两者并列展示是重复——
   // 副行只放「主状态之外」的附加状态中文；原码收进悬停提示供排障。
@@ -929,25 +978,28 @@ function renderBatteryHealth(b){
                    : '未知';
   box.innerHTML = level === 'ok' ? '' : '<div class="bh-msg">' + esc(b.message || '') + '</div>';
 
-  // 容量证据：实测 vs 新电基线 vs 衰减。
+  // 容量证据：主显「实测 + 衰减」两个决策数字；新电基线是衰减的另一种说法，
+  // 收进下方说明行——两个数并排三个数是冗余，扫读时反而要多对一次账。
   // 口径必须写在数字旁边——这两个时长都是「满电放电到低压阈值」的，不是到 0%，
   // 不写清楚会让人拿它去和总览卡的续航对不上账。
   var low = isNum(b.charge_low) ? b.charge_low : 20;
   var hasMeasured = isNum(b.measured_minutes);
   var st = [];
-  st.push('<div><span class="k">实测满电 → ' + low + '%</span><b>' +
+  st.push('<div><span class="k">实测 → ' + low + '%</span><b>' +
     (hasMeasured ? fmtShort(Math.round(b.measured_minutes * 60)) : '—') + '</b></div>');
-  st.push('<div><span class="k">新电基线 → ' + low + '%</span><b>' +
-    (isNum(b.baseline_minutes) ? fmtShort(Math.round(b.baseline_minutes * 60)) : '—') + '</b></div>');
   st.push('<div><span class="k">衰减</span><b>' +
     (isNum(b.decay_pct) ? b.decay_pct + '<i>%</i>' : '—') + '</b></div>');
   var note;
   if (hasMeasured){
     note = '满电放电到低压 ' + low + '% 的实测时长';
+    if (isNum(b.baseline_minutes))
+      note += ' · 新电基线 ' + fmtShort(Math.round(b.baseline_minutes * 60));
     if (isNum(b.measured_minutes0))
-      note += '（外推到 0% 约 ' + fmtShort(Math.round(b.measured_minutes0 * 60)) + '，仅供参考）';
+      note += ' · 外推到 0% 约 ' + fmtShort(Math.round(b.measured_minutes0 * 60)) + '（仅供参考）';
     note += ' · ' + (b.samples || 1) + ' 次样本';
     if (isNum(b.measured_load)) note += ' · 负载 ' + b.measured_load + '%';
+    if (isNum(b.baseline_load) && b.baseline_load !== b.measured_load)
+      note += '（基线负载 ' + b.baseline_load + '%）';
   } else {
     note = '还没有放电样本：等一次 8 分钟以上的真实断电，或点右侧「容量标定」造一个';
   }
@@ -988,7 +1040,7 @@ function openSheet(opt){
   var actions = (opt.actions && opt.actions.length) ? opt.actions : [{label: '知道了', primary: true}];
   actions.forEach(function(a){
     var b = document.createElement('button');
-    b.textContent = a.label;
+    b.innerHTML = (a.icon ? ic(a.icon, 13) : '') + esc(a.label);
     if (a.primary) b.className = 'primary';
     b.onclick = function(){
       if (a.keep !== true) closeSheet();
@@ -1176,15 +1228,19 @@ function maintSheetBody(){
   caSub += isNum(ca.last_days)
     ? ' · 上次 <b>' + ca.last_days + ' 天前</b>'
     : ' · 还没有标定过';
-  var cap = [];
+  var cap = [], capTip = '';
   if (isNum(b.measured_minutes)){
     var capLow = isNum(b.charge_low) ? b.charge_low : 20;
     cap.push('<span>实测满电（到 ' + capLow + '%）<b>' +
       fmtShort(Math.round(b.measured_minutes * 60)) + '</b></span>');
-    if (isNum(b.baseline_minutes))
-      cap.push('<span>新电 <b>' + fmtShort(Math.round(b.baseline_minutes * 60)) + '</b></span>');
     if (isNum(b.decay_pct) && b.decay_pct > 0)
       cap.push('<span>较基线 <b class="down">-' + b.decay_pct + '%</b></span>');
+    // 基线与口径收进悬停，不再占一个格子
+    capTip = '新电基线 ' + (isNum(b.baseline_minutes)
+      ? fmtShort(Math.round(b.baseline_minutes * 60)) : '—') + '（到 ' + capLow + '%）';
+    if (isNum(b.measured_load)) capTip += ' · 样本负载 ' + b.measured_load + '%';
+    if (isNum(b.baseline_load) && b.baseline_load !== b.measured_load)
+      capTip += '（基线负载 ' + b.baseline_load + '%）';
   } else {
     cap.push('<span>还没有容量样本，放一次 8 分钟以上的电就有了</span>');
   }
@@ -1194,7 +1250,7 @@ function maintSheetBody(){
     info: infoBtn('为什么不是「定期放空」？'),
     due: ca.due_in_days,
     sub: caSub,
-    cap: '<div class="mt-cap">' + cap.join('') + '</div>',
+    cap: '<div class="mt-cap"' + (capTip ? ' title="' + esc(capTip) + '"' : '') + '>' + cap.join('') + '</div>',
     tip: infoTip('为什么不是「定期放空」？',
       '铅酸电池没有记忆效应，每深放一次都会在极板上留下硫酸铅结晶，放得越空越难还原。真正有用的是「90 秒轻放 + 及时充满」；标定每半年一次就够，电量降到 50% 会自动停。')
   }));
@@ -1227,8 +1283,8 @@ function openMaintSheet(){
     title: '电池保养',
     body: maintSheetBody(),
     actions: [
-      {label: '容量标定', onClick: calibSheet},
-      {label: '开始短测', primary: true, onClick: briefSheet}
+      {label: '容量标定', icon: 'gauge', onClick: calibSheet},
+      {label: '开始短测', icon: 'bolt', primary: true, onClick: briefSheet}
     ]
   });
 }
@@ -1247,7 +1303,7 @@ function briefSheet(){
       '<div class="why">短测的目的是打散极板表面的轻微硫化、暴露内阻偏高的弱单体——UPS 固件每两周自检做的也是这件事。</div>',
     actions: [
       {label: '取消'},
-      {label: '开始，等我拔电', primary: true, onClick: function(){
+      {label: '开始，等我拔电', icon: 'bolt', primary: true, onClick: function(){
         BRIEF = {armedAt: Date.now(), seenAt: 0, target: 90};
         saveBrief();
         if (state) renderMaint(state);
@@ -1270,7 +1326,7 @@ function calibSheet(){
       '<div class="why">LB（低电量）与 FSD（上游强制关机）保护全程有效。配置文件不会被改动，进程重启即失效。</div>',
     actions: [
       {label: '取消'},
-      {label: '开始，等我拔电', primary: true, onClick: function(){
+      {label: '开始，等我拔电', icon: 'gauge', primary: true, onClick: function(){
         post('/api/calibrate', {minutes: 15}).then(function(j){
           if (j.error) return notify('启动失败', j.error);
           tick();
@@ -1441,6 +1497,7 @@ function renderEvents(list){
         + fmtClock(e.ts);
     }
     return '<li><time>' + txt + '</time><span class="tag ' + e.kind + '">' +
+      (KIND_IC[e.kind] ? ic(KIND_IC[e.kind], 10) : '') +
       (KIND_ZH[e.kind] || e.kind) + '</span><span>' + esc(annoCodes(e.msg)) + '</span></li>';
   }).join('');
   var rest = all.length - shown.length;
@@ -1771,9 +1828,10 @@ function runCheck(){
   var box = $('selfcheck');
   box.innerHTML = '<div class="chk"><span class="s">·</span><span class="d">自检中…</span></div>';
   fetch('/api/selfcheck').then(function(r){ return r.json(); }).then(function(j){
-    var icon = {ok:'✓', warn:'!', err:'✕'};
+    var icon = {ok:'check', warn:'alert', err:'x'};
     box.innerHTML = (j.checks || []).map(function(c){
-      return '<div class="chk ' + c.level + '"><span class="s">' + icon[c.level] + '</span>' +
+      return '<div class="chk ' + c.level + '"><span class="s">' +
+        (icon[c.level] ? ic(icon[c.level], 13) : '·') + '</span>' +
         '<span><b>' + esc(c.title) + '</b>' + (c.detail ? ' <span class="d">' + esc(c.detail) + '</span>' : '') +
         '</span></div>';
     }).join('') || '<div class="chk"><span class="s">·</span><span class="d">没有返回结果</span></div>';
@@ -1782,7 +1840,7 @@ function runCheck(){
     $('chkSum').textContent = bad ? bad + ' 项异常' : (warn ? warn + ' 项提醒' : '全部正常');
     if (bad) $('chkSec').open = true;
   }).catch(function(e){
-    box.innerHTML = '<div class="chk err"><span class="s">✕</span><span><b>自检请求失败</b> ' +
+    box.innerHTML = '<div class="chk err"><span class="s">' + ic('x', 13) + '</span><span><b>自检请求失败</b> ' +
       '<span class="d">' + esc(e) + '（后端进程可能没起来，去应用中心看运行状态并点启动）</span></span></div>';
     $('chkSum').textContent = '请求失败';
   });

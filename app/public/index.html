@@ -92,6 +92,10 @@ h1{font-size:16px;font-weight:600;margin:0;letter-spacing:-.2px}
   font-variant-numeric:tabular-nums;white-space:nowrap}
 .ov-nums .sub{font-size:var(--fs-2xs);color:var(--muted);margin-top:1px;white-space:nowrap;
   overflow:hidden;text-overflow:ellipsis;font-variant-numeric:tabular-nums}
+.ov-nums .sub.acc{color:var(--accent)}
+.ov-nums .sub.warn{color:var(--warn)}
+.ov-nums .sub.ok{color:var(--ok)}
+.ov-nums .sub:empty{display:none}
 .st .volt:empty{display:none}
 .dot{width:9px;height:9px;border-radius:50%;background:var(--muted);flex:0 0 9px}
 .dot.on{background:var(--ok)} .dot.batt{background:var(--warn)}
@@ -367,8 +371,10 @@ footer{margin-top:16px;color:var(--muted);font-size:var(--fs-2xs);line-height:1.
         </div>
       </div>
       <div class="ov-nums">
-        <div><div class="k">电量</div><div class="n"><span id="mCharge">—</span><i>%</i></div></div>
-        <div><div class="k">续航</div><div class="n"><span id="mRuntime">—</span></div></div>
+        <div><div class="k">电量</div><div class="n"><span id="mCharge">—</span><i>%</i></div>
+          <div class="sub" id="mChargeSub"></div></div>
+        <div><div class="k">续航</div><div class="n"><span id="mRuntime">—</span></div>
+          <div class="sub" id="mRuntimeSub"></div></div>
         <div><div class="k">负载</div><div class="n"><span id="mLoad">—</span><i>%</i></div>
           <div class="sub" id="mLoadSub"></div></div>
       </div>
@@ -603,6 +609,39 @@ function fmtShort(sec){
   return sec + ' 秒';
 }
 
+// 总览卡的小字后面空间有限：一小时以上只给一位小数
+function fmtSpan(sec){
+  sec = Math.max(0, Math.round(sec || 0));
+  if (sec < 60) return '<1 分';
+  if (sec >= 3600) return (sec/3600).toFixed(1).replace(/\.0$/, '') + ' 时';
+  return Math.round(sec/60) + ' 分';
+}
+
+// 电池当前阶段：放电 > 充电 > 充满，空字符串表示不值得提示
+function chargePhase(s, m){
+  var raw = String((s.status && s.status.raw) || '');
+  var onbatt = !!(s.status && s.status.onbatt);
+  if (s.calibrating || raw.indexOf('CAL') >= 0) return {t:'标定放电中', c:'warn'};
+  if (onbatt || raw.indexOf('DISCHRG') >= 0) return {t:'放电中', c:'warn'};
+  if (raw.indexOf('CHRG') >= 0){
+    return (isNum(m.charge) && m.charge >= 99) ? {t:'已充满', c:'ok'} : {t:'充电中', c:'acc'};
+  }
+  if (isNum(m.charge) && m.charge >= 99) return {t:'已充满', c:''};
+  return null;
+}
+
+// 实测续航：measured_minutes 是满电跑到低压阈值的分钟数，按当前电量线性折算
+function measuredRuntime(s, m){
+  var b = s.battery || {};
+  if (!isNum(b.measured_minutes) || !isNum(m.charge)) return null;
+  var low = isNum(b.charge_low) ? b.charge_low : 20;
+  var span = 100 - low;
+  if (span <= 0) return null;
+  var left = m.charge - low;
+  if (left <= 0) return 0;
+  return Math.round(b.measured_minutes * left / span * 60);
+}
+
 function fmtClock(ts){
   var d = new Date(ts * 1000);
   return ('0'+d.getHours()).slice(-2) + ':' + ('0'+d.getMinutes()).slice(-2);
@@ -675,6 +714,23 @@ function render(s){
   $('mCharge').textContent = isNum(m.charge) ? m.charge : '—';
   $('mRuntime').textContent = isNum(m.runtime) ? fmtShort(m.runtime) : '—';
   $('mLoad').textContent = isNum(m.load) ? m.load : '—';
+
+  // 电量下方：电池当前在干什么（充/放/满），比总的 UPS 状态更贴电池
+  var ph = chargePhase(s, m);
+  var cs = $('mChargeSub');
+  cs.textContent = ph ? ph.t : '';
+  cs.className = 'sub' + (ph && ph.c ? ' ' + ph.c : '');
+
+  // 续航下方：按真实放电斜率折算的当前负载续航，比 UPS 自带估算更贴合实际
+  var mrt = measuredRuntime(s, m);
+  var rs = $('mRuntimeSub');
+  if (mrt === null){
+    rs.textContent = '';
+    rs.title = '';
+  } else {
+    rs.textContent = '实测 ' + fmtSpan(mrt);
+    rs.title = '按 ' + ((s.battery && s.battery.samples) || 1) + ' 次真实放电的下降斜率、当前负载折算';
+  }
 
   var policy;
   if (s.shutting_down) policy = '已执行关机';

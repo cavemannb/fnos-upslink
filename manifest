@@ -1,5 +1,5 @@
 appname                    = upslink
-version                    = 1.9.1
+version                    = 1.9.2
 display_name               = UPS 联动
 desc                       = 把飞牛接入局域网内已有的 NUT 网络 UPS 服务（群晖、绿联或任何兼容 NUT 的上游）。只有明确收到 OB 电池供电、LB 低电量、FSD 强制关机才会关机；网络中断与上游离线只记日志不关机，自动关机默认关闭。
 maintainer                 = UPSLink
@@ -13,5 +13,5 @@ service_port               = 8099
 ctl_stop                   = true
 checkport                  = true
 disable_authorization_path = true
-changelog                  = 1.9.1：总览卡的电量与续航各加一行小字——电量下方直接标出放电中/充电中/已充满，续航下方给出按真实放电折算的实测续航。
+changelog                  = 1.9.2：ci: 每天 09:00 检查改动并自动发版（版本号自动递增）
 checksum                   =

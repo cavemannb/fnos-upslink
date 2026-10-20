@@ -13,5 +13,5 @@ service_port               = 8099
 ctl_stop                   = true
 checkport                  = true
 disable_authorization_path = true
-changelog                  = 1.9.6：1.9.5：保养面板合并同类信息，放电记录与事件列表分页
+changelog                  = 1.9.6：保养面板合并同类信息（短测+上次短测、标定+容量样本），放电记录与事件列表分页。
 checksum                   =

@@ -97,7 +97,9 @@ def main():
     head = commits[0] if commits else "例行构建"
 
     # manifest：版本号 + 一句话 changelog（飞牛安装弹窗里显示）
-    short = head if len(head) <= 40 else head[:40] + "…"
+    # 提交信息常带「1.9.5：」这类版本前缀，去掉再拼，避免出现「1.9.6：1.9.5：…」
+    short = re.sub(r"^v?\d+(?:\.\d+)*[:：]\s*", "", head)
+    short = short if len(short) <= 40 else short[:40] + "…"
     mf = set_field(mf, "version", new)
     mf = set_field(mf, "changelog", "%s：%s" % (new, short))
     write(MANIFEST, mf)

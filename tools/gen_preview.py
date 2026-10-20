@@ -38,20 +38,23 @@ BATTERY_DUE = """{level:"due", message:"实测容量比基线下降 38%（42 →
 
 MAINT_OK = """{level:"ok", message:"短测还有 12 天，标定还有 141 天。",
     next_in_days:12,
-    short:{interval:30, last_at:NOW-1555200, last_days:18, due_in_days:12, count:3},
+    short:{interval:30, last_at:NOW-1555200, last_days:18, due_in_days:12, count:6},
     calib:{interval:180, last_at:NOW-3369600, last_days:39, due_in_days:141},
     deep_count:0, deep_last_days:null,
-    recent:[{at:NOW-1555200, days:18, sec:104, drop:1.0, manual:false},
-            {at:NOW-2160000, days:25, sec:96, drop:1.0, manual:false},
-            {at:NOW-2505600, days:29, sec:88, drop:1.0, manual:false}]}"""
+    recent:[{at:NOW-1555200, days:18, sec:104, drop:1.0, manual:false, long:false},
+            {at:NOW-2160000, days:25, sec:96, drop:1.0, manual:false, long:false},
+            {at:NOW-2505600, days:29, sec:88, drop:1.0, manual:false, long:false},
+            {at:NOW-3369600, days:39, sec:522, drop:8.0, manual:false, long:true},
+            {at:NOW-4492800, days:52, sec:97, drop:1.0, manual:false, long:false},
+            {at:NOW-5270400, days:61, sec:101, drop:1.0, manual:true, long:false}]}"""
 
 MAINT_DUE = """{level:"due", message:"短测已过计划日期 17 天（建议每 30 天一次）。拔掉市电 90 秒再插回，不用放空。",
     next_in_days:-17,
     short:{interval:30, last_at:NOW-4060800, last_days:47, due_in_days:-17, count:2},
     calib:{interval:180, last_at:NOW-3369600, last_days:39, due_in_days:141},
     deep_count:1, deep_last_days:23,
-    recent:[{at:NOW-4060800, days:47, sec:162, drop:2.0, manual:false},
-            {at:NOW-6739200, days:78, sec:95, drop:1.0, manual:false}]}"""
+    recent:[{at:NOW-4060800, days:47, sec:162, drop:2.0, manual:false, long:false},
+            {at:NOW-6739200, days:78, sec:95, drop:1.0, manual:false, long:false}]}"""
 
 battery = BATTERY_DUE if mode == "due" else BATTERY_OK
 maint = MAINT_DUE if mode in ("maint", "due") else MAINT_OK
@@ -91,14 +94,24 @@ var DEMO_STATE = {
     interval:5, onbatt_seconds:300, shutdown_on_lb:true, shutdown_on_fsd:true,
     auto_shutdown:true, battery_installed:"2026-10-15", battery_life_months:24,
     battery_warn_days:60},
-  events:[
+  events:(function(){
+    var ev = [
     {ts:NOW-120, kind:"test", msg:"测试连接成功，耗时 2 ms"},
     {ts:NOW-5400, kind:"online", msg:"市电恢复，停电计时清零"},
     {ts:NOW-5600, kind:"onbatt", msg:"开始使用电池供电"},
     {ts:NOW-5601, kind:"status", msg:"状态变化：OL（市电在线） → OB（电池供电） DISCHRG（放电中）"},
     {ts:NOW-86400, kind:"battery", msg:"已记录电池基线：满电到 20%% 约 42 分钟（当前负载）"},
     {ts:NOW-8040, kind:"start", msg:"UPSLink %(ver)s 启动，监听 0.0.0.0:8099"}
-  ]
+    ];
+    // 再补 40 条历史状态事件：让事件卡的「显示更早的」分页有东西可翻
+    var msgs = ["状态变化：OB（电池供电） → OL（市电在线）",
+                "市电恢复，停电计时清零", "状态变化：OL（市电在线） → OB（电池供电） DISCHRG（放电中）",
+                "开始使用电池供电", "电池短测：放电 96 秒（电量 100%% → 99%%），已计入保养记录"];
+    for (var i = 0; i < 40; i++){
+      ev.push({ts:NOW-100000 - i*5400, kind:(i%%4==1)?"status":"online", msg:msgs[i%%msgs.length]});
+    }
+    return ev;
+  })()
 };
 
 var OUTAGES = [[NOW-86400,1500],[NOW-5600,200]];
@@ -222,6 +235,10 @@ if mode in ("maint", "live"):
            'border:1px solid var(--line);background:transparent;color:var(--text);'
            'font:inherit;cursor:pointer">容量标定</button></div>')
     src = src.replace("</body>", bar + "</body>")
+
+if mode == "maint":
+    # 预览页专用：直接把这层弹窗打开，方便截图核对排版
+    src = src.replace("</body>", "<script>setTimeout(openMaintSheet, 400);</script></body>")
 
 src = src.replace("<title>UPSLink · UPS 联动</title>",
                   "<title>UPSLink · 界面预览（样例数据）</title>")

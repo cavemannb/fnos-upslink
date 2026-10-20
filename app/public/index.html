@@ -188,9 +188,51 @@ h1{font-size:16px;font-weight:600;margin:0;letter-spacing:-.2px}
 .alert.due b{color:var(--bad)}
 .sheet-bd .alert{margin:0 0 11px}
 @keyframes bpulse{0%,100%{opacity:1}50%{opacity:.35}}
-.rec{margin-top:10px;font-size:var(--fs-xs);color:var(--muted)}
-.rec b{display:flex;align-items:center;gap:6px;color:var(--text);font-weight:600;margin-bottom:3px}
-.rec .rl{font-variant-numeric:tabular-nums;line-height:1.7}
+/* 保养弹窗：每项一块，把「下次该做什么」和「上次做得怎样」合并在一起 */
+.mt{display:grid;gap:8px}
+.mt-it{padding:10px 12px 11px;border-radius:var(--r-md);background:var(--fill)}
+.mt-hd{display:flex;align-items:center;gap:7px;font-size:var(--fs-md);font-weight:600;color:var(--text)}
+.mt-hd i{width:6px;height:6px;border-radius:50%;background:var(--ok);flex:0 0 auto}
+.mt-it.warn .mt-hd i{background:var(--warn)}
+.mt-it.due .mt-hd i{background:var(--bad)}
+.mt-due{margin-left:auto;font-size:var(--fs-xs);font-weight:600;color:var(--muted);
+  font-variant-numeric:tabular-nums;white-space:nowrap}
+.mt-it.warn .mt-due{color:var(--warn)}
+.mt-it.due .mt-due{color:var(--bad)}
+.mt-sub{margin-top:4px;font-size:var(--fs-xs);color:var(--muted);line-height:1.55;
+  font-variant-numeric:tabular-nums}
+.mt-sub b{color:var(--text);font-weight:600}
+.mt-cap{display:flex;flex-wrap:wrap;gap:3px 14px;margin-top:5px;font-size:var(--fs-xs);
+  color:var(--muted);font-variant-numeric:tabular-nums}
+.mt-cap b{color:var(--text);font-weight:600}
+.mt-cap b.down{color:var(--warn)}
+.mt-note{margin-top:8px;padding:8px 11px;border-radius:var(--r-md);background:var(--warn-fill);
+  font-size:var(--fs-xs);color:var(--muted);line-height:1.6}
+.mt-note b{color:var(--warn)}
+.mt-note .info{vertical-align:0}
+
+/* 放电记录：分页列表，每页固定条数，避免记录多了把弹窗撑长 */
+.rec{margin-top:14px;font-size:var(--fs-xs);color:var(--muted)}
+.rec-hd{display:flex;align-items:center;gap:6px;color:var(--text);font-weight:600;
+  font-size:var(--fs-md);margin-bottom:4px}
+.rec-hd .sp{margin-left:auto;font-weight:400;font-size:var(--fs-xs);color:var(--muted);
+  font-variant-numeric:tabular-nums}
+.rec .rl{display:flex;align-items:baseline;gap:8px;padding:5px 0;
+  border-bottom:1px dashed var(--line);line-height:1.5;font-variant-numeric:tabular-nums}
+.rec .rl:last-of-type{border-bottom:0}
+.rec .rl time{flex:0 0 62px;color:var(--muted)}
+.rec .rl .tx{margin-left:auto;text-align:right;color:var(--text)}
+.rec .rl .tx i{font-style:normal;color:var(--muted)}
+.rec .rl .tag{margin-top:0;min-width:0;line-height:1.6}
+.pager{display:flex;align-items:center;gap:8px;margin-top:9px}
+.pager button{flex:1 1 0;padding:5px 8px;border-radius:var(--r-xs);border:1px solid var(--line);
+  background:transparent;color:var(--muted);font:inherit;font-size:var(--fs-xs);cursor:pointer;
+  transition:border-color .15s,color .15s,background .15s}
+.pager button:hover:not([disabled]){border-color:var(--accent);color:var(--accent);
+  background:var(--accent-fill)}
+.pager button[disabled]{opacity:.4;cursor:default}
+.pager .pg{flex:0 0 auto;font-size:var(--fs-2xs);color:var(--muted);
+  font-variant-numeric:tabular-nums}
 
 /* ⓘ 说明按钮：点击在该行下方展开说明 */
 .info{display:inline-flex;align-items:center;justify-content:center;
@@ -325,12 +367,19 @@ ul.events{list-style:none;margin:0;padding:0 18px 14px;max-height:300px;overflow
 ul.events li{display:flex;gap:10px;padding:6px 0;border-bottom:1px dashed var(--line);font-size:var(--fs-sm)}
 ul.events li:last-child{border-bottom:0}
 ul.events time{color:var(--muted);flex:0 0 74px;font-variant-numeric:tabular-nums}
+ul.events li.more{display:block;padding:8px 0 2px;border-bottom:0;text-align:center}
+ul.events li.more button{border:0;background:transparent;color:var(--accent);font:inherit;
+  font-size:var(--fs-xs);cursor:pointer;padding:2px 6px;border-radius:var(--r-xs)}
+ul.events li.more button:hover{background:var(--accent-fill)}
+ul.events li.more button:focus-visible{outline:none;box-shadow:var(--focus-ring)}
 .tag{flex:0 0 auto;min-width:42px;text-align:center;font-size:var(--fs-2xs);line-height:1.7;
   padding:0 6px;border-radius:var(--r-pill);background:var(--fill);color:var(--muted);
   align-self:flex-start;margin-top:1px}
 .tag.shutdown,.tag.error,.tag.offline{background:var(--bad-fill);color:var(--bad)}
 .tag.onbatt{background:var(--warn-fill);color:var(--warn)}
-.tag.online,.tag.test,.tag.repair{background:var(--ok-fill);color:var(--ok)}
+.tag.online,.tag.test,.tag.repair,.tag.ok{background:var(--ok-fill);color:var(--ok)}
+.tag.warn{background:var(--warn-fill);color:var(--warn)}
+.tag.bad{background:var(--bad-fill);color:var(--bad)}
 footer{margin-top:16px;color:var(--muted);font-size:var(--fs-2xs);line-height:1.7}
 
 @media (max-width:780px){
@@ -1003,44 +1052,121 @@ function alertHtml(msg, level){
     (rest ? '<span>' + esc(rest) + '</span>' : '') + '</div>';
 }
 
-function recentText(r){
-  var when = isNum(r.days) ? (r.days <= 0 ? '今天' : r.days + ' 天前') : '—';
-  var how = isNum(r.sec) ? fmtShort(r.sec) : '手动补记';
-  var drop = isNum(r.drop) ? ' · 电量降 ' + r.drop + '%' : '';
-  return when + ' · 放电 ' + how + drop;
+// 排期天数 → 颜色级别：只按「最近到期的那一项」判断，不动任何关机逻辑
+function dueLevel(days){
+  if (!isNum(days)) return '';
+  return days <= 0 ? 'due' : days <= 7 ? 'warn' : '';
+}
+
+function dueLabel(days){
+  if (!isNum(days)) return '—';
+  if (days > 0) return '还差 ' + days + ' 天';
+  return days === 0 ? '今天到日子' : '已过 ' + (-days) + ' 天';
+}
+
+// 一条保养项：标题 + 下次到期（右侧）+ 上次记录（下方），同类信息只出现一次
+function mtItem(o){
+  return '<div class="mt-it' + (o.level ? ' ' + o.level : '') + '">' +
+    '<div class="mt-hd"><i></i>' + o.title + (o.info || '') +
+      '<span class="mt-due">' + dueLabel(o.due) + '</span></div>' +
+    '<div class="mt-sub">' + o.sub + '</div>' +
+    (o.cap || '') + (o.tip || '') +
+  '</div>';
+}
+
+function recWhen(r){
+  if (!isNum(r.days)) return '—';
+  return r.days <= 0 ? '今天' : r.days + ' 天前';
+}
+
+var MAINT_PP = 5;      // 放电记录每页条数：记录再多也只长这么高
+var maintPage = 0;
+
+function maintRecordsHtml(recs){
+  var pages = Math.max(1, Math.ceil(recs.length / MAINT_PP));
+  if (maintPage > pages - 1) maintPage = pages - 1;
+  if (maintPage < 0) maintPage = 0;
+  var from = maintPage * MAINT_PP;
+  var slice = recs.slice(from, from + MAINT_PP);
+  var rows = slice.map(function(r){
+    var tag = r.manual
+      ? '<span class="tag">补记</span>'
+      : (r.long ? '<span class="tag warn">长放电</span>' : '<span class="tag ok">短测</span>');
+    return '<div class="rl"><time>' + esc(recWhen(r)) + '</time>' + tag +
+      '<span class="tx">' + (isNum(r.sec) ? fmtShort(r.sec) : '—') +
+      (isNum(r.drop) && r.drop > 0 ? ' <i>· 降 ' + r.drop + '%</i>' : '') + '</span></div>';
+  }).join('');
+  var pager = recs.length > MAINT_PP
+    ? '<div class="pager">' +
+      '<button type="button" data-mpage="-1"' + (maintPage === 0 ? ' disabled' : '') + '>上一页</button>' +
+      '<span class="pg">' + (from + 1) + '–' + (from + slice.length) + ' / ' + recs.length + '</span>' +
+      '<button type="button" data-mpage="1"' + (maintPage >= pages - 1 ? ' disabled' : '') + '>下一页</button>' +
+      '</div>'
+    : '';
+  return '<div class="rec"><div class="rec-hd">放电记录' + infoBtn('记录是自动的') +
+      '<span class="sp">共 ' + recs.length + ' 次</span></div>' +
+    infoTip('记录是自动的',
+      '任何 30 秒以上的放电——你拔的市电、真停电、容量标定——都会在恢复市电后自动记一次，并从当天重新排期。只有历史记录被清空、想补一次时才需要手动。') +
+    rows + pager + '</div>';
 }
 
 function maintSheetBody(){
-  var m = (state && state.maintenance) || {}, sh = m.short || {}, ca = m.calib || {};
-  var rows = [];
-  rows.push('<div class="kv2"><div class="kv2-m"><b>短测（轻放）</b><span>' +
-    (isNum(sh.due_in_days) ? dueText(sh.due_in_days) + ' · 每 ' + (sh.interval || 30) + ' 天' : '—') + '</span></div></div>');
-  rows.push('<div class="kv2"><div class="kv2-m"><b>容量标定' +
-    infoBtn('为什么不是「定期放空」？') + '</b><span>' +
-    (isNum(ca.due_in_days) ? dueText(ca.due_in_days) + ' · 每 ' + Math.round((ca.interval || 180) / 30) + ' 个月' : '—') + '</span></div>' +
-    infoTip('为什么不是「定期放空」？',
-      '铅酸电池没有记忆效应，每深放一次都会在极板上留下硫酸铅结晶，放得越空越难还原。真正有用的是「90 秒轻放 + 及时充满」；标定每半年一次就够，电量降到 50% 会自动停。') +
-    '</div>');
-  rows.push('<div class="kv2"><div class="kv2-m"><b>上次短测</b><span>' +
-    (isNum(sh.last_days) ? sh.last_days + ' 天前 · 已记 ' + (sh.count || 0) + ' 次' : '还没有记录') + '</span></div></div>');
-  rows.push('<div class="kv2"><div class="kv2-m"><b>上次容量样本</b><span>' +
-    (isNum(ca.last_days) ? ca.last_days + ' 天前' : '还没有') + '</span></div></div>');
-  if (m.deep_count){
-    rows.push('<div class="kv2"><div class="kv2-m"><b>深度放电</b><span>' + m.deep_count + ' 次' +
-      (isNum(m.deep_last_days) ? ' · 最近 ' + m.deep_last_days + ' 天前' : '') + '</span></div></div>');
+  var s = state || {};
+  var m = s.maintenance || {}, sh = m.short || {}, ca = m.calib || {};
+  var b = s.battery || {};
+  var out = [];
+
+  // 结论句只在异常（临期 / 逾期）时出现；正常时不要让「还有 N 天」说三遍
+  if (m.level !== 'ok' && m.message) out.push(alertHtml(m.message, m.level));
+
+  // ---- 短测：排期与上次记录合成一项
+  var shSub = '每 ' + (sh.interval || 30) + ' 天';
+  shSub += isNum(sh.last_days)
+    ? ' · 上次 <b>' + sh.last_days + ' 天前</b>' +
+      (sh.count ? ' · 已记 <b>' + sh.count + '</b> 次' : '')
+    : ' · 还没有记录';
+  out.push(mtItem({
+    level: dueLevel(sh.due_in_days),
+    title: '短测（轻放）',
+    due: sh.due_in_days,
+    sub: shSub
+  }));
+
+  // ---- 标定：排期 + 上次样本测出来的容量，合成一项
+  var caSub = '每 ' + Math.round((ca.interval || 180) / 30) + ' 个月';
+  caSub += isNum(ca.last_days)
+    ? ' · 上次 <b>' + ca.last_days + ' 天前</b>'
+    : ' · 还没有标定过';
+  var cap = [];
+  if (isNum(b.measured_minutes)){
+    cap.push('<span>实测满电 <b>' + fmtShort(Math.round(b.measured_minutes * 60)) + '</b></span>');
+    if (isNum(b.baseline_minutes))
+      cap.push('<span>新电 <b>' + fmtShort(Math.round(b.baseline_minutes * 60)) + '</b></span>');
+    if (isNum(b.decay_pct) && b.decay_pct > 0)
+      cap.push('<span>较基线 <b class="down">-' + b.decay_pct + '%</b></span>');
+  } else {
+    cap.push('<span>还没有容量样本，放一次 8 分钟以上的电就有了</span>');
   }
+  out.push(mtItem({
+    level: dueLevel(ca.due_in_days),
+    title: '容量标定',
+    info: infoBtn('为什么不是「定期放空」？'),
+    due: ca.due_in_days,
+    sub: caSub,
+    cap: '<div class="mt-cap">' + cap.join('') + '</div>',
+    tip: infoTip('为什么不是「定期放空」？',
+      '铅酸电池没有记忆效应，每深放一次都会在极板上留下硫酸铅结晶，放得越空越难还原。真正有用的是「90 秒轻放 + 及时充满」；标定每半年一次就够，电量降到 50% 会自动停。')
+  }));
+
+  // ---- 深度放电：不影响排期，但它才是伤电池的那个动作
+  if (m.deep_count){
+    out.push('<div class="mt-note"><b>深度放电 ' + m.deep_count + ' 次</b>' +
+      (isNum(m.deep_last_days) ? ' · 最近 ' + m.deep_last_days + ' 天前' : '') +
+      ' · 铅酸放到 40% 以下会加速硫化，下次尽量在 60% 以上就插回市电</div>');
+  }
+
   var recs = m.recent || [];
-  var recHtml = recs.length
-    ? '<div class="rec"><b>最近的放电记录' +
-      infoBtn('记录是自动的') + '</b>' +
-      infoTip('记录是自动的',
-        '任何 30 秒以上的放电——你拔的市电、真停电、容量标定——都会在恢复市电后自动记一次，并从当天重新排期。只有历史记录被清空、想补一次时才需要手动。') +
-      recs.map(function(r){
-        return '<div class="rl">' + esc(recentText(r)) + (r.manual ? '（手动补记）' : '') + '</div>';
-      }).join('') + '</div>'
-    : '';
-  return (m.level === 'ok' && m.message ? '<p>' + esc(m.message) + '</p>'
-      : alertHtml(m.message, m.level)) + rows.join('') + recHtml;
+  return out.join('') + (recs.length ? maintRecordsHtml(recs) : '');
 }
 
 // ⓘ 说明：按钮点击后，紧随其后的 .itip 说明块展开/收起
@@ -1053,6 +1179,7 @@ function infoTip(title, text){
 }
 
 function openMaintSheet(){
+  maintPage = 0;
   openSheet({
     title: '电池保养',
     body: maintSheetBody(),
@@ -1154,7 +1281,7 @@ function renderCalib(s){
 document.addEventListener('click', function(e){
   var info = e.target.closest ? e.target.closest('.info') : null;
   if (info){
-    var box = info.closest('.kv2, .rec');
+    var box = info.closest('.kv2, .rec, .mt-it');
     var tip = box && box.querySelector('.itip');
     if (tip){
       var open = tip.hidden;
@@ -1162,6 +1289,18 @@ document.addEventListener('click', function(e){
       info.classList.toggle('open', open);
       info.setAttribute('aria-expanded', open ? 'true' : 'false');
     }
+    return;
+  }
+  var pg = e.target.closest ? e.target.closest('[data-mpage]') : null;
+  if (pg){
+    maintPage += parseInt(pg.getAttribute('data-mpage'), 10) || 0;
+    $('sheetBody').innerHTML = maintSheetBody();
+    return;
+  }
+  if (e.target.id === 'btnEvMore'){
+    evShown += EV_PP;
+    lastSig.ev = '';
+    renderEvents(evList);
     return;
   }
   if (e.target.id === 'btnMaint'){ openMaintSheet(); return; }
@@ -1233,13 +1372,23 @@ function renderVars(v){
 }
 
 var evFilter = 'all';
+var EV_PP = 20;         // 事件每页条数：先给最近 20 条，要更早的点「显示更早的」
+var evShown = EV_PP;
+var evList = [];
+
 function renderEvents(list){
+  evList = list || [];
   var kinds = EV_FILTER[evFilter];
-  var shown = kinds ? list.filter(function(e){ return kinds.indexOf(e.kind) >= 0; }) : list;
-  var sig = evFilter + '|' + (list.length ? list[0].ts : 0) + '|' + shown.length;
+  var all = kinds ? evList.filter(function(e){ return kinds.indexOf(e.kind) >= 0; }) : evList;
+  var sig = evFilter + '|' + evShown + '|' + (evList.length ? evList[0].ts : 0) + '|' + all.length;
   if (sig === lastSig.ev) return;
   lastSig.ev = sig;
-  $('events').innerHTML = shown.length ? shown.map(function(e){
+  if (!all.length){
+    $('events').innerHTML = '<li><span class="mini">该分类下暂无事件</span></li>';
+    return;
+  }
+  var shown = all.slice(0, evShown);
+  var html = shown.map(function(e){
     var t = new Date(e.ts*1000);
     var txt = '今天 ' + fmtClock(e.ts);
     var now = new Date();
@@ -1250,7 +1399,13 @@ function renderEvents(list){
     }
     return '<li><time>' + txt + '</time><span class="tag ' + e.kind + '">' +
       (KIND_ZH[e.kind] || e.kind) + '</span><span>' + esc(annoCodes(e.msg)) + '</span></li>';
-  }).join('') : '<li><span class="mini">该分类下暂无事件</span></li>';
+  }).join('');
+  var rest = all.length - shown.length;
+  if (rest > 0){
+    html += '<li class="more"><button type="button" class="lb" id="btnEvMore">显示更早的 ' +
+      Math.min(EV_PP, rest) + ' 条（还有 ' + rest + ' 条）</button></li>';
+  }
+  $('events').innerHTML = html;
 }
 
 // -------------------------------------------------- 趋势图
@@ -1437,6 +1592,7 @@ document.querySelectorAll('[data-ev]').forEach(function(btn){
     document.querySelectorAll('[data-ev]').forEach(function(b){ b.classList.remove('on'); });
     btn.classList.add('on');
     evFilter = btn.dataset.ev;
+    evShown = EV_PP;
     lastSig.ev = '';
     renderEvents(state ? state.events || [] : []);
   });

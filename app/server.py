@@ -26,7 +26,7 @@ import traceback
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from urllib.parse import parse_qs, urlparse
 
-APP_VERSION = "1.9.4"
+APP_VERSION = "1.9.5"
 PORT = int(os.environ.get("UPSLINK_PORT") or os.environ.get("TRIM_SERVICE_PORT") or "8099")
 DATA_DIR = os.environ.get("TRIM_PKGVAR") or os.environ.get("UPSLINK_DATA") or "/opt/upslink/var"
 CONF_PATH = os.path.join(DATA_DIR, "config.json")
@@ -868,7 +868,9 @@ def maintenance_status(trend, events=None):
     }
 
 
-def _recent_briefs(state, now, limit=4):
+def _recent_briefs(state, now, limit=MAINT_KEEP_RECORDS):
+    """放电记录，新的在前。默认给全部（最多 MAINT_KEEP_RECORDS 条），
+    界面自己分页，别在这里静默截断——截断了用户就看不到更早的记录。"""
     out = []
     for b in list(state.get("brief") or [])[-limit:][::-1]:
         try:
@@ -879,12 +881,15 @@ def _recent_briefs(state, now, limit=4):
         c0, c1 = b.get("c0"), b.get("c1")
         if isinstance(c0, (int, float)) and isinstance(c1, (int, float)):
             drop = round(c0 - c1, 1)
+        sec = b.get("sec")
         out.append({
             "at": at,
             "days": (now - at) // 86400 if at else None,
-            "sec": b.get("sec"),
+            "sec": sec,
             "drop": drop,
             "manual": bool(b.get("manual")),
+            # 够长的放电同时是容量样本，界面用标签区分「短测」和「长放电」
+            "long": bool(isinstance(sec, (int, float)) and sec >= CALIB_MIN_WINDOW * 60),
         })
     return out
 

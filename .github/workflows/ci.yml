@@ -26,7 +26,7 @@ jobs:
       - name: 冒烟测试（内置假 NUT 服务端，10 项）
         run: python tools/smoke_test.py
 
-      - name: 电池健康逻辑（8 组）
+      - name: 电池健康逻辑（10 组）
         run: python tools/test_battery.py
 
       - name: 容量标定状态机（10 组）
@@ -34,6 +34,9 @@ jobs:
 
       - name: 电池保养排期（11 组）
         run: python tools/test_maint.py
+
+      - name: 版本号规则（10 项）
+        run: python tools/test_bump.py
 
   build:
     name: 打包

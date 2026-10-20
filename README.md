@@ -273,6 +273,7 @@ fnOS 自带 NUT，装额外包可能版本冲突；本应用直接用明文协�
 │   ├── test_maint.py       电池保养排期单元测试
 │   ├── bump_version.py     自动发版用：递增版本号、生成发布说明
 │   ├── sync_version.py     把自动发版后的远端版本号同步回本地
+│   ├── test_bump.py        版本号递增规则测试
 │   └── nas-doctor.sh       只读体检脚本
 ├── manifest                应用元信息（版本、端口、平台）
 ├── build-fpk.sh            一键构建
@@ -287,6 +288,7 @@ python3 tools/smoke_test.py                  # 冒烟测试（10 项，内置假
 python3 tools/test_battery.py                # 电池健康逻辑（10 组）
 python3 tools/test_calib.py                  # 容量标定状态机（10 组）
 python3 tools/test_maint.py                  # 保养排期与逾期判定（11 组）
+python3 tools/test_bump.py                   # 版本号递增规则（10 项）
 python3 tools/gen_preview.py ok|due|worn|charge|calib|maint  # 生成界面预览，不连后端
 ```
 
@@ -296,11 +298,12 @@ python3 tools/gen_preview.py ok|due|worn|charge|calib|maint  # 生成界面预�
 
 ### 自动发版
 
-`.github/workflows/release.yml` 每天北京时间 09:00 跑一次：过去 24 小时若 `app/`、`tools/`、`manifest` 等代码路径有提交，就递增补丁号（`1.9.1` → `1.9.2`）、同步 `app/server.py` 的 `APP_VERSION`、在 `CHANGELOG.md` 顶部插入当天条目，构建 fpk 后创建对应 tag 的 Release。只改 README 或截图不会触发发版。
+`.github/workflows/release.yml` 每天北京时间 09:00 跑一次：过去 24 小时若 `app/`、`tools/`、`manifest` 等代码路径有提交，就把补丁号在**最近一次已发布的 tag** 上 +1（`1.9.12` → `1.9.13`）、同步 `app/server.py` 的 `APP_VERSION`、构建 fpk 后创建对应 tag 的 Release。只改 README 或截图不会触发发版。`CHANGELOG.md` 由人工维护，自动发版的说明只写进 Release 正文。
 
 - 版本号回写由机器人提交（`chore(release): vX.Y.Z`），这类提交会被下一次检查排除，自己不会触发自己。
 - 想立刻发一版：Actions → 每日发布 → Run workflow，勾上 `force`。
 - 同一版本号已有 Release 时跳过，不会覆盖已发布的包。
+- **不要手动改 `manifest` 的 version**：版本号只由发版流程推进。如果提交里已经把版本号升过，发版脚本会沿用（不会叠加），避免出现「本地 +1、CI 再 +1」导致每个版本 +2。
 - 自动发版后本地仓库会落后一个版本，`python3 tools/sync_version.py` 把远端版本号拉回来（否则下次本地构建出来的包版本号与远端不一致）。
 
 ## 反馈与贡献

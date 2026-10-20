@@ -2,14 +2,16 @@
 """自动发版用的版本号递增器：只由 .github/workflows/release.yml 调用。
 
 做的事：
-  1. manifest 的 version 末位 +1（patch 满 100 进位到 minor，避免 1.9.137 这种版本）
+  1. 以「最近一次已发布的 tag」为基准把 patch +1（本地已经手动升过则沿用，不叠两次）
   2. app/server.py 的 APP_VERSION 同步（页面底部与 /api/state 都读它）
   3. manifest 的 changelog 字段改成一句话（飞牛安装时显示）
   4. 生成 release-notes.md 给 gh release create 用
 
 不改 CHANGELOG.md：那个文件是人工维护的功能说明，自动发版每天往里写会跟本地改动打架，
 自动版本的说明放 Release 正文就够了。
-本地不要手动跑，否则版本号会跳到远端前面；同步远端版本请用 tools/sync_version.py。
+本地不要手动跑、也不要手动改 manifest 的 version：版本号只由发版流程推进。
+之前每次「本地先 +1、CI 再 +1」，导致发布的版本号一直 +2（1.9.6 → 1.9.8 → 1.9.10），
+现在由 next_version() 兜住这种情况。同步远端版本请用 tools/sync_version.py。
 """
 import datetime as dt
 import os
@@ -64,6 +66,40 @@ def bump(ver):
     return "%d.%d.%d" % (nums[0], nums[1], nums[2])
 
 
+def ver_tuple(ver):
+    nums = [int(p) if p.isdigit() else 0 for p in str(ver).split(".")]
+    while len(nums) < 3:
+        nums.append(0)
+    return tuple(nums[:3])
+
+
+def latest_tag():
+    """最近一次**已发布**的版本（tag），没有则 None。"""
+    try:
+        out = subprocess.run(["git", "tag", "--list", "v*", "--sort=-v:refname"],
+                             cwd=ROOT, capture_output=True, text=True, check=True).stdout
+    except Exception:
+        return None
+    for ln in out.splitlines():
+        s = ln.strip().lstrip("v")
+        if re.fullmatch(r"\d+\.\d+\.\d+", s):
+            return s
+    return None
+
+
+def next_version(manifest_ver, tag_ver):
+    """算下一个要发布的版本号。
+
+    基准是「最近一次已发布的 tag」而不是 manifest：
+    如果提交里已经手动把 manifest 升过（比 tag 新），就直接沿用，
+    不再叠一次 —— 否则每个版本会稳定 +2（1.9.6 → 1.9.8 → 1.9.10）。
+    """
+    if tag_ver and ver_tuple(manifest_ver) > ver_tuple(tag_ver):
+        return manifest_ver, "沿用提交里已升过的版本"
+    base = max(ver_tuple(manifest_ver), ver_tuple(tag_ver or "0.0.0"))
+    return bump("%d.%d.%d" % base), "在最近发布版本上 +1"
+
+
 def day_commits():
     """过去 24 小时的代码提交（排除本工作流自己产生的版本号回写）。"""
     try:
@@ -93,7 +129,8 @@ def main():
 
     mf = read(MANIFEST)
     old = field(mf, "version")
-    new = bump(old)
+    tag = latest_tag()
+    new, why = next_version(old, tag)
     head = commits[0] if commits else "例行构建"
 
     # manifest：版本号 + 一句话 changelog（飞牛安装弹窗里显示）
@@ -123,7 +160,8 @@ def main():
         "**说明**：本版本由每天 09:00 的定时任务自动构建；没有代码改动的日子不会发版。",
     ]) + "\n")
 
-    print("version %s -> %s（%d 条代码提交）" % (old, new, len(commits)))
+    print("version %s -> %s（%s；最近发布 %s，%d 条代码提交）" % (
+        old, new, why, tag or "无", len(commits)))
     out = os.environ.get("GITHUB_OUTPUT")
     if out:
         with open(out, "a", encoding="utf-8") as f:

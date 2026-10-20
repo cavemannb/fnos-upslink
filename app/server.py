@@ -910,20 +910,38 @@ def _save_maint(state):
         pass
 
 
+# 保养状态的读-改-写全部串行：轮询线程与页面请求都会碰这个文件。
+_MAINT_LOCK = threading.Lock()
+
+
 def mark_calibrated(at=None):
-    """标定或一次足够长的真实断电都算「刷新了容量样本」。"""
-    state = _load_maint()
+    """标定成功即刷新容量样本的时间（只改排期，不动放电记录）。"""
     at = int(at or time.time())
-    state["last_calib_at"] = max(int(state.get("last_calib_at") or 0), at)
-    _save_maint(state)
+    with _MAINT_LOCK:
+        state = _load_maint()
+        state["last_calib_at"] = max(int(state.get("last_calib_at") or 0), at)
+        _save_maint(state)
+
+
+def add_manual_record(at=None):
+    """手动补记一次短测（用户点「记一次」时才走这里）。
+
+    这是唯一由人触发的写入口；自动记录只由 scan_discharges 在轮询线程里写。
+    """
+    at = int(at or time.time())
+    with _MAINT_LOCK:
+        state = _load_maint()
+        state["last_short_at"] = at
+        brief = list(state.get("brief") or [])
+        brief.append({"at": at, "sec": None, "manual": True})
+        state["brief"] = brief[-MAINT_KEEP_RECORDS:]
+        _save_maint(state)
 
 
 def _brief_key(b):
     return (int(b.get("at") or 0), b.get("sec") if b.get("sec") is not None else -1,
             bool(b.get("manual")))
 
-
-_MAINT_LOCK = threading.Lock()
 
 # 手动登记（没有时长）的记录退化成一个时刻，前后给一点容差，
 # 避免连点两次写成两条。
@@ -994,17 +1012,19 @@ def _dedup_brief(brief):
     return out
 
 
-def maintenance_status(trend, events=None):
-    """电池保养排期：短测（轻放）+ 标定（测容量），外加深度放电计数。
+def scan_discharges(trend, events=None, now=None):
+    """把趋势里「已结束、还没统计过」的放电写进保养记录。
 
-    只做建议，不碰任何关机逻辑——这里产出的 level 最多影响界面颜色。
+    **放电记录唯一的写入口**，只由轮询线程调用。之前页面刷新、打开保养面板、
+    点「扫描」都会各扫一遍趋势并落盘，同一次放电被几条路径各写一遍，于是出现
+    两条一模一样的记录。现在读路径（maintenance_snapshot）完全不写文件。
     """
-    now = int(time.time())
+    now = int(now or time.time())
     with _MAINT_LOCK:
-        return _maintenance_status_locked(trend, events, now)
+        return _scan_locked(trend, events, now)
 
 
-def _maintenance_status_locked(trend, events, now):
+def _scan_locked(trend, events, now):
     state = _load_maint()
     dirty = False
 
@@ -1014,7 +1034,7 @@ def _maintenance_status_locked(trend, events, now):
         state["brief"] = brief
         dirty = True
 
-    # ---- 1. 把「已经结束」的放电区间过一遍：短的记短测，长的记标定，过深的记警告
+    # 把「已经结束」的放电区间过一遍：短的记短测，长的记标定，过深的记警告
     scan = int(state.get("scan_at") or 0)
     for r in ob_runs(trend):
         if r["open"] or r["at"] <= scan:
@@ -1054,8 +1074,21 @@ def _maintenance_status_locked(trend, events, now):
     if dirty:
         state["scan_at"] = scan
         _save_maint(state)
+    return dirty
 
-    # ---- 2. 排期
+
+def maintenance_snapshot(now=None):
+    """电池保养排期快照：只读，不扫趋势、不写文件。
+
+    短测（轻放）+ 标定（测容量）+ 深度放电计数，只做建议，不碰任何关机逻辑
+    ——这里产出的 level 最多影响界面颜色。
+    """
+    now = int(now or time.time())
+    state = dict(_load_maint())
+    # 历史重复只在内存里清洗，让界面先显示干净的结果；落盘由 scan_discharges 负责
+    state["brief"] = _dedup_brief(state.get("brief"))
+
+    # ---- 排期
     base = int(state.get("created_at") or now)
     last_short = int(state.get("last_short_at") or 0)
     last_calib = int(state.get("last_calib_at") or 0)
@@ -1101,7 +1134,7 @@ def _maintenance_status_locked(trend, events, now):
             "last_at": last_short or None,
             "last_days": (now - last_short) // 86400 if last_short else None,
             "due_in_days": int(short_days),
-            "count": len(state.get("brief") or []),
+            "count": len(state["brief"]),
         },
         "calib": {
             "interval": MAINT_CALIB_DAYS,
@@ -1164,6 +1197,7 @@ class Engine:
         self.events = EventLog(EVENT_PATH)
         self.trend = Trend(DATA_DIR)
         self._outage_cache = None
+        self._scan_key = None          # 上次记录放电时的趋势指纹（采样数 + 最后时刻）
         self.vars = {}
         self.connected = False
         self.last_error = ""
@@ -1434,12 +1468,30 @@ class Engine:
                 self.calib_finish("电量降到 %d%% 保护线" % charge, abort=True)
 
     # ---- 电池保养 ----
+    def record_discharges(self):
+        """把已结束的放电记进保养记录——**唯一的写入点**，只有轮询线程调。
+
+        页面打开、刷新、点「扫描」都不写记录：那些路径只读快照，
+        否则同一次放电会被几条路径各写一遍。
+        """
+        with self.lock:
+            samples = self.trend.samples
+            key = (len(samples), samples[-1].get("t") if samples else 0)
+        if key == self._scan_key:
+            return False        # 趋势里没有新采样，就没有新的放电区间要记
+        try:
+            changed = scan_discharges(self.trend, self.events)
+        except Exception:
+            return False
+        self._scan_key = key
+        return changed
+
     def refresh_maintenance(self, force=False):
-        """60 秒算一次：要遍历 30 天的放电区间，没必要每个快照都重算。"""
+        """只读快照，60 秒算一次：要遍历 30 天的放电区间，不必每个快照都重算。"""
         if not force and time.time() - self.maint_at < 60:
             return self.maint
         try:
-            m = maintenance_status(self.trend, self.events)
+            m = maintenance_snapshot()
         except Exception:
             return self.maint
         with self.lock:
@@ -1451,6 +1503,10 @@ class Engine:
     def poll_once(self):
         with self.lock:
             conf = dict(self.conf)
+        # 先记账（唯一写入口），再取只读快照，这样快照里能看到刚记下的放电；
+        # 有新记录就让快照立刻重算，不用等 60 秒的缓存过期。
+        if self.record_discharges():
+            self.maint_at = 0
         self.refresh_maintenance()
         if not conf.get("host"):
             with self.lock:
@@ -1816,16 +1872,12 @@ class Handler(BaseHTTPRequestHandler):
         if path == "/api/maint":
             action = str(body.get("action") or "scan")
             if action == "done":
-                with _MAINT_LOCK:
-                    state = _load_maint()
-                    at = int(time.time())
-                    state["last_short_at"] = at
-                    brief = list(state.get("brief") or [])
-                    brief.append({"at": at, "sec": None, "manual": True})
-                    state["brief"] = brief[-MAINT_KEEP_RECORDS:]
-                    _save_maint(state)
+                add_manual_record()
                 ENGINE.events.add("maint", "手动记录：已完成一次电池短测")
+            # 读路径：不扫趋势、不写记录。这里只叫醒轮询线程去做记录（唯一写入口），
+            # 并返回当前快照；记录落盘后，页面下一次轮询就会看到。
             ENGINE.maint_at = 0
+            ENGINE.wake.set()
             return self._json({"ok": True, "maintenance": ENGINE.refresh_maintenance(force=True)})
 
         if path == "/api/drill":

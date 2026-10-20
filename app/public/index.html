@@ -1052,6 +1052,8 @@ function renderMaint(s){
       '<span class="sp">正在记录这次放电…</span><span class="chev">›</span></button>';
     post('/api/maint', {action: 'scan'}).then(function(j){
       if (j && j.maintenance && state){ state.maintenance = j.maintenance; renderMaint(state); }
+      // 记录只由后端轮询线程写入，这里只是叫醒它；落地后再取一次
+      setTimeout(tick, 1500);
     }).catch(function(){});
     return;
   }

@@ -118,6 +118,7 @@ UPS ──USB── 群晖（NUT Server，3493/TCP）
 - 保养面板把同类信息合并成块：短测一项同时给「还差几天」与「上次 N 天前 · 已记 N 次」；容量标定一项附上次样本测出的容量（实测满电 / 新电基线 / 衰减），一眼看到标定结果。
 - 面板底部的放电记录分页显示（每页 5 条，标注短测 / 长放电），记录再多也不会把弹窗撑长；主页事件卡片同样按页增量加载（首屏 20 条，「显示更早的」继续翻）。
 - 过了计划日期，电池卡片只写「已过计划日期 N 天」并给出做法，不提供「推迟」按钮——做没做由放电记录说话，没做就一直是这个状态。
+- 放电记录**只有一个写入口**：后台轮询线程（每 5 秒一轮，趋势有新采样才扫）。页面刷新、打开保养面板、点「扫描」都只读快照，不会产生、也不会重复产生记录。
 - 记录存于 `maintenance.json`。
 - 保养排期只做提醒，不参与任何关机判断。
 
@@ -288,7 +289,7 @@ bash build-fpk.sh                            # 产物：dist/upslink-<version>.f
 python3 tools/smoke_test.py                  # 冒烟测试（10 项，内置假 NUT 服务端）
 python3 tools/test_battery.py                # 电池健康逻辑（10 组）
 python3 tools/test_calib.py                  # 容量标定状态机（10 组）
-python3 tools/test_maint.py                  # 保养排期与逾期判定（13 组）
+python3 tools/test_maint.py                  # 保养排期与逾期判定（14 组）
 python3 tools/test_outage.py                 # 断电/短测/标定的来源判定（29 项）
 python3 tools/test_bump.py                   # 版本号递增规则（10 项）
 python3 tools/gen_preview.py ok|due|worn|charge|calib|maint  # 生成界面预览，不连后端

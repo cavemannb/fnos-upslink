@@ -551,9 +551,20 @@ footer{margin-top:16px;color:var(--muted);font-size:var(--fs-2xs);line-height:1.
       <div class="check"><input type="checkbox" id="fLb"><span>收到低电量信号（LB）立即关机</span></div>
       <div class="check"><input type="checkbox" id="fFsd"><span>响应上游强制关机指令（FSD）</span></div>
       <div class="check"><input type="checkbox" id="fAuto"><span><b>启用自动关机</b>（关闭时本应用只监控，绝不关机）</span></div>
+      <h2>Bark 推送（断电通知）</h2>
+      <div class="check"><input type="checkbox" id="fBark"><span><b>启用 Bark 推送</b>（iOS 安装 Bark 后填设备 Key）</span></div>
+      <div class="row">
+        <div><label>服务器地址</label><input type="text" id="fBarkServer" placeholder="https://api.day.app"></div>
+        <div><label>设备 Key</label><input type="text" id="fBarkKey" placeholder="Bark App 里显示的那串"></div>
+      </div>
+      <div class="check"><input type="checkbox" id="fBarkLoss"><span>断电时推送</span></div>
+      <div class="check"><input type="checkbox" id="fBarkRecovery"><span>恢复市电时推送</span></div>
+      <div class="check"><input type="checkbox" id="fBarkLow"><span>电量低（LB）时推送</span></div>
+      <p class="hint">容量标定期间主动拔电不会推送。推送经手机 Bark 服务器中转，断电时路由器通常还在 UPS 上，能收到；先保存配置再点测试。</p>
       <div class="actions">
         <button class="primary" id="btnSave">保存配置</button>
         <button id="btnTest">测试连接</button>
+        <button id="btnBarkTest">测试推送</button>
         <button id="btnDrill">安全演练</button>
       </div>
       <div id="msg"></div>
@@ -639,19 +650,19 @@ var STATUS_ZH = {
 var KIND_ZH = {
   start:'启动', config:'配置', test:'测试', drill:'演练', status:'状态',
   onbatt:'断电', online:'来电', shutdown:'关机', repair:'修复', error:'错误', offline:'离线',
-  calibrate:'标定', maint:'保养'
+  calibrate:'标定', maint:'保养', bark:'推送'
 };
 // 事件标签的小图标（status 类事件量最大且语义重复，刻意不加，避免整列都是图标）
 var KIND_IC = {
   onbatt:'bolt', shutdown:'bolt', online:'plug', offline:'x',
-  test:'clock', drill:'bolt', calibrate:'gauge', maint:'cal',
+  test:'clock', drill:'bolt', calibrate:'gauge', maint:'cal', bark:'alert',
   start:'cfg', config:'cfg', repair:'wrench', error:'alert'
 };
 var EV_FILTER = {
   all: null,
   power: ['onbatt','online','shutdown','offline'],
   status: ['status'],
-  op: ['config','test','drill','repair','start','calibrate','maint'],
+  op: ['config','test','drill','repair','start','calibrate','maint','bark'],
   err: ['error']
 };
 
@@ -951,6 +962,12 @@ function render(s){
     $('fLb').checked = !!c.shutdown_on_lb;
     $('fFsd').checked = !!c.shutdown_on_fsd;
     $('fAuto').checked = !!c.auto_shutdown;
+    $('fBark').checked = !!c.bark_enabled;
+    $('fBarkServer').value = c.bark_server || 'https://api.day.app';
+    $('fBarkKey').value = c.bark_key || '';
+    $('fBarkLoss').checked = c.bark_on_power_loss !== false;
+    $('fBarkRecovery').checked = c.bark_on_recovery !== false;
+    $('fBarkLow').checked = c.bark_on_low_battery !== false;
     $('fBatDate').value = c.battery_installed || '';
     $('fBatLife').value = c.battery_life_months || 24;
     $('fBatWarn').value = c.battery_warn_days || 60;
@@ -1727,6 +1744,12 @@ function payload(){
     shutdown_on_lb: $('fLb').checked,
     shutdown_on_fsd: $('fFsd').checked,
     auto_shutdown: $('fAuto').checked,
+    bark_enabled: $('fBark').checked,
+    bark_server: $('fBarkServer').value.trim() || 'https://api.day.app',
+    bark_key: $('fBarkKey').value.trim(),
+    bark_on_power_loss: $('fBarkLoss').checked,
+    bark_on_recovery: $('fBarkRecovery').checked,
+    bark_on_low_battery: $('fBarkLow').checked,
     battery_installed: $('fBatDate').value,
     battery_life_months: parseInt($('fBatLife').value,10) || 24,
     battery_warn_days: parseInt($('fBatWarn').value,10) || 60
@@ -1754,6 +1777,16 @@ $('btnTest').onclick = function(){
           (j.status_text || (statusZh(raw) ? statusZh(raw) + '（' + raw + '）' : '')), true);
     } else { say('连接失败：'+j.error, false); }
   }).catch(function(e){ say('请求失败：'+e, false); });
+};
+
+$('btnBarkTest').onclick = function(){
+  say('正在发送测试推送…', true);
+  post('/api/bark-test', {
+    bark_server: $('fBarkServer').value.trim(),
+    bark_key: $('fBarkKey').value.trim()
+  }).then(function(j){
+    say(j.ok ? '测试推送已发送：' + j.message : '测试失败：' + j.message, !!j.ok);
+  }).catch(function(e){ say('请求失败：' + e, false); });
 };
 
 $('btnDrill').onclick = function(){

@@ -23,6 +23,7 @@ import sys
 import threading
 import time
 import traceback
+import urllib.request
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from urllib.parse import parse_qs, urlparse
 
@@ -66,6 +67,11 @@ MAINT_CALIB_DAYS = 180          # 标定建议间隔（6 个月）
 MAINT_SHORT_MIN_SEC = 30        # 短于这个时长的状态抖动不算一次放电
 MAINT_DEEP_CHARGE = 40          # 记录到的最低电量低于这个值 → 记一次深度放电
 MAINT_KEEP_RECORDS = 12
+
+# Bark 推送：断电 / 恢复市电 / 低电量时给手机发一条通知（iOS 的 Bark App）。
+# 只用标准库 urllib；失败只写事件日志，绝不影响监控与关机主流程。
+BARK_TIMEOUT = 6.0
+BARK_STATE_PATH = os.path.join(DATA_DIR, "bark_state.json")
 
 
 # NUT 的 ups.status 是空格分隔的简写标志位，界面上统一补中文注释
@@ -163,6 +169,13 @@ DEFAULT_CONF = {
     "battery_installed": "",
     "battery_life_months": 24,
     "battery_warn_days": 60,
+    # Bark 推送：bark_server 填自建服务地址即可，默认官方 api.day.app
+    "bark_enabled": False,
+    "bark_server": "https://api.day.app",
+    "bark_key": "",
+    "bark_on_power_loss": True,
+    "bark_on_recovery": True,
+    "bark_on_low_battery": True,
 }
 
 STATUS_KEYS = [
@@ -187,6 +200,63 @@ def save_conf(conf):
     with open(tmp, "w", encoding="utf-8") as f:
         json.dump(conf, f, ensure_ascii=False, indent=2)
     os.replace(tmp, CONF_PATH)
+
+
+# ---------------------------------------------------------------- Bark 推送
+def bark_send(server_url, key, title, body, timeout=BARK_TIMEOUT):
+    """给 Bark 发一条推送，返回 (是否成功, 简短说明)。
+
+    server_url 形如 https://api.day.app（自建服务就填自己的地址），
+    key 是 Bark App 里显示的设备 Key。走 POST /push + JSON。
+    所有异常都在这里消化成 False，调用方不必再包 try。
+    """
+    base = str(server_url or "https://api.day.app").strip().rstrip("/")
+    key = str(key or "").strip()
+    if not key:
+        return False, "未填写设备 Key"
+    if not (base.startswith("https://") or base.startswith("http://")):
+        return False, "服务器地址必须以 http(s):// 开头"
+    payload = json.dumps({
+        "device_key": key,
+        "title": title,
+        "body": body,
+        "group": "UPSLink",
+    }).encode("utf-8")
+    req = urllib.request.Request(
+        base + "/push", data=payload, method="POST",
+        headers={"Content-Type": "application/json; charset=utf-8"})
+    try:
+        with urllib.request.urlopen(req, timeout=timeout) as resp:
+            data = json.loads(resp.read().decode("utf-8", "replace") or "{}")
+        if int(data.get("code", 0)) == 200:
+            return True, "已送达"
+        return False, "Bark 返回 code=%s" % data.get("code")
+    except Exception as exc:
+        return False, "%s: %s" % (type(exc).__name__, exc)
+
+
+def _load_bark_state():
+    """推送标记落盘：进程重启后不把同一次断电再推一遍。"""
+    try:
+        with open(BARK_STATE_PATH, "r", encoding="utf-8") as f:
+            st = json.load(f) or {}
+    except Exception:
+        st = {}
+    return {
+        "loss_pushed": bool(st.get("loss_pushed")),
+        "lb_pushed": bool(st.get("lb_pushed")),
+        "fsd_pushed": bool(st.get("fsd_pushed")),
+    }
+
+
+def _save_bark_state(state):
+    try:
+        tmp = BARK_STATE_PATH + ".tmp"
+        with open(tmp, "w", encoding="utf-8") as f:
+            json.dump(state, f)
+        os.replace(tmp, BARK_STATE_PATH)
+    except Exception:
+        pass
 
 
 # ---------------------------------------------------------------- NUT 客户端
@@ -1215,6 +1285,7 @@ class Engine:
         self.calib_last = None
         self.calib_grace_until = 0
         self._calib_ver = 0             # 标定窗口变化时 +1，让 _last_outage 缓存失效
+        self.bark_state = _load_bark_state()   # Bark 推送去重标记（落盘，重启不重推）
         # 标定状态只存在于内存 + 一个提示文件；配置本身从不改动，
         # 所以进程重启后直接作废是安全的一侧。
         if _load_calib():
@@ -1302,6 +1373,33 @@ class Engine:
         with self.lock:
             self._outage_cache = ((n, last_t, self._calib_ver), info)
         return info
+
+    # ---- Bark 推送 ----
+    def bark_push(self, title, body):
+        """异步发一条 Bark 推送，结果写进事件日志。
+
+        开关和 Key 都从配置读；线程 daemon + 超时双重保险，
+        Bark 服务器再慢也不阻塞轮询线程，更不会碰到关机逻辑。
+        """
+        with self.lock:
+            conf = dict(self.conf)
+        if not conf.get("bark_enabled"):
+            return
+        server_url = conf.get("bark_server") or "https://api.day.app"
+        key = conf.get("bark_key") or ""
+
+        def work():
+            ok, msg = bark_send(server_url, key, title, body)
+            self.events.add("bark" if ok else "error",
+                            "Bark「%s」%s：%s" % (title, "已推送" if ok else "推送失败", msg))
+
+        threading.Thread(target=work, daemon=True).start()
+
+    def bark_reset_flags(self):
+        """市电恢复后清空推送去重标记，下次断电重新推。"""
+        if any(self.bark_state.values()):
+            self.bark_state = {"loss_pushed": False, "lb_pushed": False, "fsd_pushed": False}
+            _save_bark_state(self.bark_state)
 
     # ---- 关机 ----
     def do_shutdown(self, reason, dry_run=False):
@@ -1557,6 +1655,7 @@ class Engine:
         with self.lock:
             conf = dict(self.conf)
             status = self.vars.get("ups.status", "")
+            charge = self.vars.get("battery.charge", "")
             onbatt_since = self.onbatt_since
         st = self.parse(status)
         now = time.time()
@@ -1574,6 +1673,11 @@ class Engine:
         if st["online"]:
             if onbatt_since:
                 self.events.add("online", "市电恢复，停电计时清零")
+                if conf.get("bark_enabled") and conf.get("bark_on_recovery"):
+                    minutes = max(1, int(round((now - onbatt_since) / 60.0)))
+                    self.bark_push("UPS：市电已恢复",
+                                   "停电约 %d 分钟，已回到市电供电。" % minutes)
+            self.bark_reset_flags()
             with self.lock:
                 self.onbatt_since = None
                 self.calib_grace_until = 0
@@ -1585,7 +1689,33 @@ class Engine:
                     self.onbatt_since = now
                 self.events.add("onbatt", "开始使用电池供电")
                 onbatt_since = now
+                # Bark：真断电才推。标定窗口是自己拔的电，不打扰；
+                # 标记落盘，进程重启后不会把同一次断电再推一遍。
+                if (conf.get("bark_enabled") and conf.get("bark_on_power_loss")
+                        and not drill and not self.bark_state["loss_pushed"]
+                        and not in_calib_window(now)):
+                    self.bark_state["loss_pushed"] = True
+                    _save_bark_state(self.bark_state)
+                    pct = _num(charge)
+                    self.bark_push("UPS：断电了",
+                                   "已切换为电池供电"
+                                   + ("，剩余电量约 %d%%" % round(pct) if pct is not None and pct >= 0 else "")
+                                   + "。")
             elapsed = now - onbatt_since
+            if st["fsd"] and not self.bark_state["fsd_pushed"]:
+                self.bark_state["fsd_pushed"] = True
+                _save_bark_state(self.bark_state)
+                self.bark_push("UPS：上游要求强制关机",
+                               "收到 FSD 信号，通常表示上游已决定关机。")
+            if st["low"] and not self.bark_state["lb_pushed"]:
+                # LB 只推一次：低电量状态会连续多个轮询周期，不去重会刷屏
+                self.bark_state["lb_pushed"] = True
+                _save_bark_state(self.bark_state)
+                if conf.get("bark_enabled") and conf.get("bark_on_low_battery"):
+                    pct = _num(charge)
+                    self.bark_push("UPS：电量低",
+                                   "电池仅剩约 %s，请关注关机倒计时。"
+                                   % ("%d%%" % round(pct) if pct is not None and pct >= 0 else "低电量"))
             if st["low"] and conf["shutdown_on_lb"] and conf["auto_shutdown"]:
                 self.do_shutdown("UPS 报告低电量（LB）", dry_run=drill)
                 return
@@ -1790,7 +1920,7 @@ class Handler(BaseHTTPRequestHandler):
         if path == "/api/config":
             with ENGINE.lock:
                 conf = dict(ENGINE.conf)
-                for key in ("host", "ups", "username", "password"):
+                for key in ("host", "ups", "username", "password", "bark_server", "bark_key"):
                     if key in body:
                         conf[key] = str(body[key]).strip()
                 if body.get("clear_password"):
@@ -1801,7 +1931,9 @@ class Handler(BaseHTTPRequestHandler):
                             conf[key] = int(body[key])
                         except (TypeError, ValueError):
                             pass
-                for key in ("auto_shutdown", "shutdown_on_lb", "shutdown_on_fsd"):
+                for key in ("auto_shutdown", "shutdown_on_lb", "shutdown_on_fsd",
+                            "bark_enabled", "bark_on_power_loss", "bark_on_recovery",
+                            "bark_on_low_battery"):
                     if key in body:
                         conf[key] = bool(body[key])
                 if "battery_installed" in body:
@@ -1821,6 +1953,8 @@ class Handler(BaseHTTPRequestHandler):
                 conf["port"] = max(1, min(65535, int(conf["port"])))
                 conf["interval"] = max(2, min(300, int(conf["interval"])))
                 conf["onbatt_seconds"] = max(0, min(86400, int(conf["onbatt_seconds"])))
+                if conf["bark_enabled"] and not conf["bark_key"]:
+                    return self._json({"error": "启用了 Bark 推送但未填写设备 Key"}, 400)
                 if conf["auto_shutdown"] and not conf["host"]:
                     return self._json({"error": "未填写上游地址，不能开启自动关机"}, 400)
                 if conf["auto_shutdown"] and conf["onbatt_seconds"] == 0 \
@@ -1832,6 +1966,17 @@ class Handler(BaseHTTPRequestHandler):
             ENGINE.events.add("config", "配置已更新（自动关机：%s）" % ("开" if conf["auto_shutdown"] else "关"))
             ENGINE.wake.set()
             return self._json({"ok": True, "config": {k: v for k, v in conf.items() if k != "password"}})
+
+        if path == "/api/bark-test":
+            # 优先用表单里刚填的值（可能还没保存），否则用已保存配置
+            with ENGINE.lock:
+                conf = dict(ENGINE.conf)
+            server_url = str(body.get("bark_server") or conf.get("bark_server") or "")
+            key = str(body.get("bark_key") if body.get("bark_key") else conf.get("bark_key") or "").strip()
+            ok, msg = bark_send(server_url, key,
+                                "UPSLink 测试推送", "收到这条说明 Bark 配置没问题。")
+            ENGINE.events.add("bark" if ok else "error", "测试推送：%s" % msg)
+            return self._json({"ok": ok, "message": msg}, 200 if ok else 400)
 
         if path == "/api/repair":
             ok, message = repair_shutdown()

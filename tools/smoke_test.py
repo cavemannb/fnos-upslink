@@ -11,6 +11,7 @@ import sys
 import tempfile
 import threading
 import time
+import urllib.error
 import urllib.request
 
 PORT = 18099
@@ -77,12 +78,20 @@ def fake_nut():
 
 
 def req(method, path, body=None):
+    """非 2xx 会抛 HTTPError，需要读错误体的场景用 req_any。"""
+    return req_any(method, path, body)[1]
+
+
+def req_any(method, path, body=None):
     data = json.dumps(body).encode() if body is not None else None
     r = urllib.request.Request(
         "http://127.0.0.1:%d%s" % (PORT, path), data=data, method=method,
         headers={"Content-Type": "application/json"})
-    with urllib.request.urlopen(r, timeout=10) as resp:
-        return json.loads(resp.read().decode())
+    try:
+        with urllib.request.urlopen(r, timeout=10) as resp:
+            return resp.status, json.loads(resp.read().decode())
+    except urllib.error.HTTPError as e:
+        return e.code, json.loads(e.read().decode())
 
 
 def main():
@@ -155,6 +164,12 @@ def main():
         st = req("GET", "/api/state")
         assert not st["connected"] and not st["shutting_down"], st
         print("10. 断连保护          OK  上游离线不触发关机")
+
+        code, j = req_any("POST", "/api/config", {"bark_enabled": True, "bark_key": ""})
+        assert code == 400 and "Key" in j["error"], (code, j)
+        code, j = req_any("POST", "/api/bark-test", {"bark_server": "https://api.day.app", "bark_key": ""})
+        assert code == 400 and not j["ok"] and "Key" in j["message"], (code, j)
+        print("11. Bark 推送保护     OK  未填 Key 时报错不落库、测试不推")
 
         print("\n全部通过。")
     finally:

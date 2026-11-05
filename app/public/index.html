@@ -714,6 +714,16 @@ function fmtShort(sec){
   return sec + ' 秒';
 }
 
+// 长时长的读法：年 / 天 / 时 / 分取最高两级，避免「3000 时」这种没法脑内换算的数
+function fmtLong(sec){
+  if (!isNum(sec)) return '—';
+  sec = Math.max(0, Math.floor(sec));
+  var DAY = 86400, YEAR = 365 * DAY;
+  if (sec >= YEAR) return Math.floor(sec/YEAR) + ' 年 ' + Math.floor((sec%YEAR)/DAY) + ' 天';
+  if (sec >= DAY) return Math.floor(sec/DAY) + ' 天 ' + Math.floor((sec%DAY)/3600) + ' 时';
+  return fmtShort(sec);
+}
+
 // 总览卡的小字后面空间有限：一小时以上只给一位小数
 function fmtSpan(sec){
   sec = Math.max(0, Math.round(sec || 0));
@@ -827,8 +837,8 @@ function render(s){
   for (var i = 0; i < extra.length; i++){
     if (extra[i] && extra[i] !== st) sub.push(extra[i]);
   }
-  if (s.status.onbatt) sub.push('已持续 ' + fmtShort(s.onbatt_elapsed));
-  else if (s.online_for) sub.push('已稳定 ' + fmtShort(s.online_for));
+  if (s.status.onbatt) sub.push('已持续 ' + fmtLong(s.onbatt_elapsed));
+  else if (s.online_for) sub.push('已稳定 ' + fmtLong(s.online_for));
   $('stSub').textContent = sub.join(' · ') || '等待数据';
 
   // 有记录以来最近一次断电（不受下方时间跨度筛选影响）：
@@ -1378,7 +1388,7 @@ function renderCalib(s){
   var pct = total ? Math.max(0, Math.min(100, Math.round((total - cal.left) / total * 100))) : 0;
   var head, tip;
   if (cal.phase === 'discharging'){
-    head = '放电中，已持续 <b>' + fmtShort(s.onbatt_elapsed) + '</b>';
+    head = '放电中，已持续 <b>' + fmtLong(s.onbatt_elapsed) + '</b>';
     tip = cal.sample_ready
       ? '已采到可用样本，可以插回市电了。'
       : '继续放电到 ' + cal.hint + ' 分钟以上，让电量降幅超过 3%。';
